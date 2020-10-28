@@ -20,17 +20,49 @@ In discussions with Informal Systems we decided to begin with incremental improv
 
 The P2P stack will be refactored and improved in several phases:
 
-* Phase 1: code and API refactoring, maintaining protocol compatibility as far as possible.
+* **Phase 1:** code and API refactoring, maintaining protocol compatibility as far as possible.
 
-* Phase 2: additional transport protocols and incremental protocol improvements.
+* **Phase 2:** additional transports and incremental protocol improvements.
 
-* Phase 3: broader disruptive protocol changes and major new features.
+* **Phase 3:** disruptive protocol changes and major new features.
 
-The scope of phases 2 and 3 are still uncertain, and will be revisited once the preceding phases have been completed and we have a better sense of requirements and challenges.
+The scope of phases 2 and 3 are still uncertain, and will be revisited once the preceding phases have been completed as we'll have a better sense of requirements and challenges.
 
 ## Detailed Design
 
-Separate ADRs will be submitted for specific designs and changes in each phase, following research and prototyping.
+Separate ADRs will be submitted for specific designs and changes in each phase, following research and prototyping. Below are objectives in order of priority.
+
+### Phase 1: Code and API Refactoring
+
+The first phase will focus on improving the internal abstractions and implementations in the `p2p` package. As far as possible, these should not change the P2P protocol.
+
+* Cleaner, decoupled abstractions for e.g. `Reactor`, `Switch`, and `Peer`. #5287 #3833
+    * Reactors should receive messages in separate goroutines or via buffered channel. #2888
+* Improved peer lifecycle management. #3679 #3719 #3653 #3540 #3183 #3081 #1356
+    * Peer prioritization. #2860 #2041
+* Pluggable transports, with `MConnection` as one implementation. #5587 #2430 #805
+* Improved peer address handling.
+    * Address book refactor. #4848 #2661
+    * Transport-agnostic peer addressing. #5587 #3782 #3692
+    * Improved detection and advertisement of own address. #5588 #4260 #3716 #1727
+    * Support multiple IPs per peer. #1521 #2317
+
+The refactor should also attempt to address testability, observability, quality-of-service, backpressure, DoS resilience, performance, and security - at least to some extent. We may add explicit objectives for these in later phases once the core refactor is done.
+
+### Phase 2: Additional Transports and Protocol Improvements
+
+This phase will focus on protocol improvements and other breaking changes. The following are considered proposals, that will need to be evaluated and discussed separately once the refactor is done.
+
+* QUIC transport. [#198](https://github.com/tendermint/spec/issues/198)
+* Noise protocol for secret connection handshake. #5589 #3340
+* Peer ID in connection handshake. #5590
+* Compression. #2375
+* Rate-limiting, backpressure, and QoS queueing. #4753 #2338
+* Simplify and clean up P2P configuration options.
+
+### Phase 3: Disruptive Protocol Changes and Major Features
+
+
 
 > This section does not need to be filled in at the start of the ADR, but must be completed prior to the merging of the implementation.
 >
@@ -64,9 +96,7 @@ Separate ADRs will be submitted for specific designs and changes in each phase, 
 
 ## Status
 
-> A decision may be "proposed" if it hasn't been agreed upon yet, or "accepted" once it is agreed upon. Once the ADR has been implemented mark the ADR as "implemented". If a later ADR changes or reverses a decision, it may be marked as "deprecated" or "superseded" with a reference to its replacement.
-
-{Deprecated|Proposed|Accepted|Declined}
+Proposed
 
 ## Consequences
 
