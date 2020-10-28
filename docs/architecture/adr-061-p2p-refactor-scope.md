@@ -12,16 +12,25 @@ Informal Systems are also building a Rust implementation of Tendermint, [Tenderm
 
 ## Alternative Approaches
 
-There have been recurring proposals to adopt [LibP2P](https://libp2p.io) instead of maintaining our own P2P networking stack (see [#3696](https://github.com/tendermint/tendermint/issues/3696)). However, this would be a highly breaking change, there are indications that we might have to fork and modify LibP2P, and there are concerns about the abstractions used.
+There have been recurring proposals to adopt [LibP2P](https://libp2p.io) instead of maintaining our own P2P networking stack (see [#3696](https://github.com/tendermint/tendermint/issues/3696)). However, this would be a highly breaking protocol change, there are indications that we might have to fork and modify LibP2P, and there are concerns about the abstractions used.
 
 In discussions with Informal Systems we decided to begin with incremental improvements to the current P2P stack, add support for pluggable transports, and then gradually start experimenting with LibP2P as a transport layer. If this proves successful, we can consider adopting it for higher-level components at a later time.
 
 ## Decision
 
-> This section records the decision that was made.
-> It is best to record as much info as possible from the discussion that happened. This aids in not having to go back to the Pull Request to get the needed information.
+The P2P stack will be refactored and improved in several phases:
+
+* Phase 1: code and API refactoring, maintaining protocol compatibility as far as possible.
+
+* Phase 2: additional transport protocols and incremental protocol improvements.
+
+* Phase 3: broader disruptive protocol changes and major new features.
+
+The scope of phases 2 and 3 are still uncertain, and will be revisited once the preceding phases have been completed and we have a better sense of requirements and challenges.
 
 ## Detailed Design
+
+Separate ADRs will be submitted for specific designs and changes in each phase, following research and prototyping.
 
 > This section does not need to be filled in at the start of the ADR, but must be completed prior to the merging of the implementation.
 >
