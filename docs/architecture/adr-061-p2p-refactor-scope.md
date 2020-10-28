@@ -18,7 +18,7 @@ In discussions with Informal Systems we decided to begin with incremental improv
 
 ## Decision
 
-The P2P stack will be refactored and improved in several phases:
+The P2P stack will be refactored and improved iteratively, in several phases:
 
 * **Phase 1:** code and API refactoring, maintaining protocol compatibility as far as possible.
 
@@ -47,60 +47,36 @@ The first phase will focus on improving the internal abstractions and implementa
     * Improved detection and advertisement of own address. #5588 #4260 #3716 #1727
     * Support multiple IPs per peer. #1521 #2317
 
-The refactor should also attempt to address testability, observability, quality-of-service, backpressure, DoS resilience, performance, and security - at least to some extent. We may add explicit objectives for these in later phases once the core refactor is done.
+The refactor should also attempt to address testability, observability, quality-of-service, backpressure, DoS resilience, performance, and security - at least to some extent. Much of this will be revisited as explicit objectives in phase 2.
 
 ### Phase 2: Additional Transports and Protocol Improvements
 
-This phase will focus on protocol improvements and other breaking changes. The following are considered proposals, that will need to be evaluated and discussed separately once the refactor is done.
+This phase will focus on protocol improvements and other breaking changes. The following are considered proposals that will need to be evaluated and discussed separately once the refactor is done, and additional proposals are likely to be added during phase 1.
 
 * QUIC transport. [#198](https://github.com/tendermint/spec/issues/198)
 * Noise protocol for secret connection handshake. #5589 #3340
 * Peer ID in connection handshake. #5590
+* Peer and service discovery (e.g. RPC nodes, state sync snapshots). #5481 #4583
 * Compression. #2375
-* Rate-limiting, backpressure, and QoS queueing. #4753 #2338
+* Rate-limiting, backpressure, and QoS scheduling. #4753 #2338
+* Improved metrics and tracing. #3849 #2600
 * Simplify and clean up P2P configuration options.
 
 ### Phase 3: Disruptive Protocol Changes and Major Features
 
+This phase covers speculative, wide-reaching proposals that are poorly defined and highly uncertain. They will be evaluated and discussed once the previous phases are done.
 
-
-> This section does not need to be filled in at the start of the ADR, but must be completed prior to the merging of the implementation.
->
-> Here are some common questions that get answered as part of the detailed design:
->
-> - What are the user requirements?
->
-> - What systems will be affected?
->
-> - What new data structures are needed, what data structures will be changed?
->
-> - What new APIs will be needed, what APIs will be changed?
->
-> - What are the efficiency considerations (time/space)?
->
-> - What are the expected access patterns (load/throughput)?
->
-> - Are there any logging, monitoring or observability needs?
->
-> - Are there any security considerations?
->
-> - Are there any privacy considerations?
->
-> - How will the changes be tested?
->
-> - If the change is large, how will the changes be broken up for ease of review?
->
-> - Will these changes require a breaking (major) release?
->
-> - Does this change require coordination with the SDK or other?
+* Adopt LibP2P. #3696
+* Dynamic channel advertisment, as reactors are enabled/disabled. #4394 #1148
+* Allow cross-reactor communication, possibly without channels.
+* Pubsub-style networking topology and pattern.
+* Support multiple chain IDs in the same network.
 
 ## Status
 
 Proposed
 
 ## Consequences
-
-> This section describes the consequences, after applying the decision. All consequences should be summarized here, not just the "positive" ones.
 
 ### Positive
 
