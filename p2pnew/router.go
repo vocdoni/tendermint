@@ -14,7 +14,7 @@ type Envelope struct {
 	From *Peer
 	// To represents the message receiver, or nil for inbound messages.
 	To *Peer
-	// Broadcast sends the message to all known peers, ignoring To.
+	// Broadcast sends an outbound message to all known peers, ignoring To.
 	Broadcast bool
 	// Message is the payload.
 	Message proto.Message
@@ -30,9 +30,10 @@ func (r *Router) Open(id ChannelID) (Channel, error) {
 	return Channel{ID: id}, nil
 }
 
-// Channel represents a logically separate channel for Protobuf messages.
+// Channel represents a logically separate bidirectional channel for Protobuf
+// messages.
 type Channel struct {
-	// ID contains the Channel ID. It must not be changed.
+	// ID contains the channel ID.
 	ID ChannelID
 }
 
@@ -53,10 +54,4 @@ func (c *Channel) Receive() <-chan Envelope {
 // discarded.
 func (c *Channel) Send() chan<- Envelope {
 	return nil
-}
-
-// Peer contains information about a peer.
-type Peer struct {
-	ID        []byte
-	Addresses []Address
 }

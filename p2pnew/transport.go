@@ -1,3 +1,4 @@
+// nolint: structcheck,unused
 package p2p
 
 // Transports securely connect to network addresses using public key
@@ -7,20 +8,40 @@ package p2p
 import (
 	"context"
 	"io"
+	"net"
 
 	"github.com/tendermint/tendermint/crypto"
 )
 
-// Address is a transport-agnostic network address. An address should map
-// onto exactly one Transport. It should not contain the peer ID, and a
-// peer may have multiple addresses.
-//
-// Possibly use multiaddr? https://github.com/multiformats/multiaddr
-type Address string
+// Protocol represents a transport protocol, used to map endpoints to transports.
+type Protocol string
 
 // StreamID represents a single stream ID. It is up to the transport
 // to separate streams as appropriate.
 type StreamID uint8
+
+// Endpoint represents a node endpoint used by Transport to dial a peer. A node
+// can have multiple endpoints. Remote endpoints must always have an IP address,
+// while local endpoints may not (e.g. for UNIX sockets or in-memory nodes).
+type Endpoint struct {
+	// protocol specifies the endpoint protocol, e.g. mconn or quic.
+	protocol Protocol
+	// network specifies the network kind (as Go's net.Addr.Network), e.g. ip, tcp, or udp.
+	network string
+	// address specifies the network address, e.g. an IP:port pair or UNIX file path.
+	address string
+	// ip contains the IP address of a remote endpoint, or nil if local. All
+	// remote endpoints must have an IP address. It is primarily used for
+	// endpoint filtering (i.e. don't advertise loopback endpoints to peers),
+	// while transports should use address for dialing.
+	ip net.IP
+}
+
+// Endpoint implements net.Addr.
+var _ net.Addr = Endpoint{}
+
+func (a Endpoint) Network() string { return a.network }
+func (a Endpoint) String() string  { return a.address }
 
 // Transport represents an underlying network transport. It creates connections
 // to/from an address, and sends raw bytes across separate streams within this
@@ -29,8 +50,8 @@ type Transport interface {
 	// Accept waits for the next inbound connection.
 	Accept() (Connection, error)
 
-	// Dial creates an outbound connection to an address.
-	Dial(context.Context, Address) (Connection, error)
+	// Dial creates an outbound connection to an endpoint.
+	Dial(context.Context, Endpoint) (Connection, error)
 }
 
 // Connection represents a single secure connection to an address. It contains
@@ -49,9 +70,13 @@ type Connection interface {
 }
 
 // Stream represents a single logical IO stream within a connection.
+//
+// FIXME For compatibility with the old MConn protocol, a single Write call must
+// correspond to a single logical message such that we can set PacketMsg.EOF at
+// the end of the message. Once we can change the protocol or remove MConn, we
+// should change this requirement such that the byte slices are arbitrary.
 type Stream interface {
-	io.ReadWriteCloser
-	// Read([]byte) (int, error)
-	// Write([]byte) (int, error)
-	// Close() error
+	io.Reader // Read([]byte) (int, error)
+	io.Writer // Write([]byte) (int, error)
+	io.Closer // Close() error
 }
