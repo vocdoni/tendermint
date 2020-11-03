@@ -1,3 +1,4 @@
+// nolint: structcheck,unused
 package p2p
 
 import (
@@ -21,14 +22,21 @@ type Envelope struct {
 }
 
 // Router maintains connections to peers and route Protobuf messages between
-// them and local reactors.
+// them and local reactors. It will handle e.g. connection retries and backoff.
+// Some number of outbound messages per peer will be buffered, but once full
+// any new outbound messages for that peer are discarded, and the queue may be
+// discarded entirely if the peer is unreachable.
 type Router struct {
+	// Listeners is a set of transports receiving inbound traffic.
+	listeners []Transport
 }
 
+// NewRouter creates a new router. Listeners are pre-initialized transports that
+// accept connections from peers.
+func NewRouter(listeners []Transport) *Router { return nil }
+
 // Open opens a channel. A channel can only be opened once, until closed.
-func (r *Router) Open(id ChannelID) (Channel, error) {
-	return Channel{ID: id}, nil
-}
+func (r *Router) Open(id ChannelID) (Channel, error) { return Channel{}, nil }
 
 // Channel represents a logically separate bidirectional channel for Protobuf
 // messages.
@@ -37,21 +45,21 @@ type Channel struct {
 	ID ChannelID
 }
 
-// Close closes the channel. It can no longer be used, and the ID can be
-// reused by calling Router.Open().
-func (c *Channel) Close() error {
-	return nil
-}
+// Close closes the channel, making it unusable. The ID can be reused. It is
+// the sender's responsibility to close the channel.
+func (c *Channel) Close() error { return nil }
 
-// Receive returns a Go channel that receives messages from peers.
-// Envelope will always have From and Message set.
-func (c *Channel) Receive() <-chan Envelope {
-	return nil
-}
+// Receive returns a Go channel that receives messages from peers. Envelope will
+// always have From and Message set.
+//
+// The scheduling of incoming messages is an implementation detail that is
+// managed by the router. This could be done using any number of algorithms,
+// e.g. FIFO, round-robin, or some other scheme.
+func (c *Channel) Receive() <-chan Envelope { return nil }
 
-// Send returns a Go channel that sends messages to peers.
-// Envelope must have To (or Broadcast) and Message set, otherwise it is
-// discarded.
-func (c *Channel) Send() chan<- Envelope {
-	return nil
-}
+// Send returns a Go channel that sends messages to peers. Envelope must have To
+// (or Broadcast) and Message set, otherwise it is discarded.
+//
+// Messages are not guaranteed to be delivered, and may be dropped e.g. if the
+// peer goes offline, if the peer is overloaded, or for any other reason.
+func (c *Channel) Send() chan<- Envelope { return nil }

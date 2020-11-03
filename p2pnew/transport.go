@@ -13,9 +13,6 @@ import (
 	"github.com/tendermint/tendermint/crypto"
 )
 
-// Protocol represents a transport protocol, used to map endpoints to transports.
-type Protocol string
-
 // StreamID represents a single stream ID. It is up to the transport
 // to separate streams as appropriate.
 type StreamID uint8
@@ -24,8 +21,9 @@ type StreamID uint8
 // can have multiple endpoints. Remote endpoints must always have an IP address,
 // while local endpoints may not (e.g. for UNIX sockets or in-memory nodes).
 type Endpoint struct {
-	// protocol specifies the endpoint protocol, e.g. mconn or quic.
-	protocol Protocol
+	// protocol specifies the endpoint protocol, e.g. mconn or quic. The Router
+	// uses this to map an endpoint onto a Transport.
+	protocol string
 	// network specifies the network kind (as Go's net.Addr.Network), e.g. ip, tcp, or udp.
 	network string
 	// address specifies the network address, e.g. an IP:port pair or UNIX file path.
