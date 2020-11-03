@@ -1,4 +1,3 @@
-// nolint: structcheck,unused
 package p2p
 
 import (
@@ -25,11 +24,10 @@ type Envelope struct {
 // them and local reactors. It will handle e.g. connection retries and backoff.
 // Some number of outbound messages per peer will be buffered, but once full
 // any new outbound messages for that peer are discarded, and the queue may be
-// discarded entirely if the peer is unreachable.
-type Router struct {
-	// Listeners is a set of transports receiving inbound traffic.
-	listeners []Transport
-}
+// discarded entirely if the peer is unreachable. Similarly, inbound messages
+// will be buffered per channel, but once full any new inbound messages on
+// that channel are discarded.
+type Router struct{}
 
 // NewRouter creates a new router. Listeners are pre-initialized transports that
 // accept connections from peers.
@@ -54,7 +52,7 @@ func (c *Channel) Close() error { return nil }
 //
 // The scheduling of incoming messages is an implementation detail that is
 // managed by the router. This could be done using any number of algorithms,
-// e.g. FIFO, round-robin, or some other scheme.
+// e.g. FIFO, round-robin, priority queues, or some other scheme.
 func (c *Channel) Receive() <-chan Envelope { return nil }
 
 // Send returns a Go channel that sends messages to peers. Envelope must have To
