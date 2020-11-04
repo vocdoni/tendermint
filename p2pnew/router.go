@@ -75,6 +75,11 @@ func (r *Router) PeerErrors() chan<- PeerError { return nil }
 // PeerUpdates returns a channel with peer updates. The caller must cancel
 // the context to end the subscription, and keep consuming messages in a timely
 // fashion until the channel is closed to avoid blocking updates.
+//
+// FIXME This should possibly be implemented via an Peers.OnUpdate() hook
+// or something similar, to trigger notifications from the central data
+// location rather than spread around the Router. This is left as an
+// implementation detail.
 func (r *Router) PeerUpdates(ctx context.Context) <-chan PeerUpdate { return nil }
 
 // Channel represents a logically separate bidirectional channel for Protobuf

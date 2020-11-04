@@ -1,4 +1,3 @@
-// nolint: structcheck,unused
 package p2p
 
 // Transports securely connect to network addresses using public key
@@ -8,7 +7,7 @@ package p2p
 import (
 	"context"
 	"io"
-	"net"
+	"net/url"
 
 	"github.com/tendermint/tendermint/crypto"
 )
@@ -18,20 +17,29 @@ import (
 type StreamID uint8
 
 // Endpoint represents a node endpoint used by Transport to dial a peer. A node
-// can have multiple endpoints. Remote endpoints must always have an IP address,
-// while local endpoints may not (e.g. for UNIX sockets or in-memory nodes).
+// can have multiple endpoints, and are usually resolved from a PeerAddress.
+//
+// Endpoints are represented as URLs, where some fields have special meaning:
+//
+// - Host: if set, must be an IP address (v4 or v6), and defines this as a networked endpoint.
+// - Port: if set, Host must be set as well, and can be interpreted both as a TCP or UDP port
+//   (this may be used e.g. when configuring NAT routers via UPnP).
+//
+// Host has implications for how the endpoint is advertised to peers, e.g.
+// if set the IP address should only be advertised to peers that have access
+// to that network (so 192.168.0.0 should only be advertised to peers on that
+// network, while public IPs can be advertised to anyone). If Host is not set,
+// this is considered a non-networked transport, and should only be advertised
+// to peers using other non-networked transports.
 type Endpoint struct {
-	// protocol specifies the endpoint protocol, e.g. mconn or quic. The Router
-	// uses this to map an endpoint onto a Transport.
-	protocol string
-	// address specifies the network address, e.g. an IP:port pair or UNIX file path.
-	address string
-	// ip contains the IP address of a remote endpoint, or nil if local. All
-	// remote endpoints must have an IP address. It is primarily used for
-	// endpoint filtering (i.e. don't advertise loopback endpoints to peers),
-	// while transports should use address for dialing.
-	ip net.IP
+	url.URL
+	// may contain additional fields to track e.g. failure statistics,
+	// unless we store this in the Router.
 }
+
+// PeerAddress converts the endpoint into a peer address, used e.g. to advertise
+// the local node's transport endpoints to other peers.
+func (e Endpoint) PeerAddress() PeerAddress { return PeerAddress{} }
 
 // Transport represents a network transport that can provide both inbound
 // and outbound connections.
@@ -41,19 +49,36 @@ type Transport interface {
 
 	// Dial creates an outbound connection to an endpoint.
 	Dial(context.Context, Endpoint) (Connection, error)
+
+	// Endpoints returns a list of endpoints the transport is listening on.
+	// Any IP addresses do not need to be normalized or otherwise preprocessed
+	// by the transport (this will be done elsewhere before advertising them to
+	// peers).
+	Endpoints() []Endpoint
+
+	// Protocols returns a list of protocols (aka schemes) that this Transport
+	// can handle. Only one Transport can use a given protocol. It is used by
+	// Router when looking up a Transport for an Endpoint.
+	Protocols() []string
 }
 
 // Connection represents a single secure connection to an address. It contains
 // separate logical streams that can read or write raw bytes.
 //
 // Callers are responsible for authenticating the remote peer's pubkey
-// against known information, i.e. the node ID. Otherwise they are vulnerable
+// against known information, i.e. the peer ID. Otherwise they are vulnerable
 // to MitM attacks.
 type Connection interface {
 	// Stream returns a reference to a stream within the connection, identified
 	// by an arbitrary stream ID. Multiple calls return the same stream. Any
 	// errors should be returned via the Stream interface.
 	Stream(StreamID) Stream
+
+	// LocalEndpoint returns the local endpoint for the connection.
+	LocalEndpoint() Endpoint
+
+	// RemoteEndpoint returns the remote endpoint for the connection.
+	RemoteEndpoint() Endpoint
 
 	// PubKey returns the public key of the remote peer. It should not change
 	// after the connection has been established.

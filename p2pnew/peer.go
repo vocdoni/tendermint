@@ -8,18 +8,20 @@ import (
 	dbm "github.com/tendermint/tm-db"
 )
 
-// URL represents an externally provided peer address, which is resolved into a
-// set of specific transport endpoints. For example, the URL may contain a DNS
-// hostname which is resolved into a set of IP addresses. The URL scheme
-// specifies which transport to use, e.g. mconn://validator.foo.com:26657 or
-// unix:///var/run/tendermint.sock.
-type URL url.URL
+// PeerAddress represents a peer address, given as a URL. Peer addresses are used
+// when expressing and exchanging peers (e.g. in config files and via PEX), but
+// they are resolved into one or more Endpoints that are used when connecting.
+//
+// Some URL fields have special meaning:
+//
+// - Scheme: used by the Router to look up a Transport for this address.
+// - Host: if non-empty, interpreted either as an IP address (v4 or v6) or DNS name.
+// - User: if non-empty, interpreted as a PeerID checked against the peer's public key.
+type PeerAddress url.URL
 
-// Resolve resolves the URL into a set of endpoints (e.g. resolving a DNS name
-// into a list of IP addresses).
-func (u URL) Resolve(ctx context.Context) ([]Endpoint, error) {
-	return nil, nil
-}
+// Resolve resolves a PeerAddress into a set of Endpoints, typically by expanding
+// out any DNS names given in Host.
+func (a PeerAddress) Resolve(ctx context.Context) []Endpoint { return nil }
 
 // PeerID is a unique peer ID.
 type PeerID string
@@ -44,19 +46,25 @@ const (
 	PeerPriorityPersistent
 )
 
-// Peer contains information about a peer.
+// Peer contains information about a peer. It should only be used internally in
+// the Router, while reactors only get access to the ID and status. This avoids
+// race conditions and lock contention, and decouples reactors from P2P
+// infrastructure.
 type Peer struct {
 	ID        PeerID
 	Status    PeerStatus
 	Priority  PeerPriority
-	URLs      []URL      // Peer URLs (e.g. from config), resolved to endpoints when appropriate.
-	Endpoints []Endpoint // Network endpoints, e.g. IP/port pairs.
+	Addresses []PeerAddress              // Peer addresses, from e.g. config or PEX.
+	Endpoints map[PeerAddress][]Endpoint // Resolved endpoints by address.
 }
 
 // Peers tracks information about known peers for the Router.
 //
-// FIXME Needs a way to get pending peers and endpoints, and to report endpoint
-// failures.
+// FIXME The router needs to figure out which peers to connect to, which
+// endpoints to use, and so on. This needs to be based on peer information such
+// as peer priorities, number of connection failures, and so on, which should
+// probably be tracked in Peers somehow so that it is persisted. This is left as
+// an implementation detail, and probably requires additional methods.
 type Peers struct {
 	peers map[PeerID]*Peer // Peers, entire set cached in memory.
 	db    dbm.DB           // Database for persistence, if non-nil.
@@ -65,13 +73,14 @@ type Peers struct {
 // NewPeers creates a new peer set, using db for persistence if non-nil.
 func NewPeers(db dbm.DB) (*Peers, error) { return nil, nil }
 
+// Delete removes a peer from the set.
+func (p *Peers) Delete(id PeerID) error {}
+
 // Get fetches a peer from the set, and whether it existed or not.
 func (p *Peers) Get(id PeerID) (Peer, bool) { return Peer{}, false }
 
-// Merge merges a peer with an existing entry (by ID) if any. This is useful
-// e.g. to add peer URLs from a config file or endpoints from DNS lookups while
-// also keeping reported peer endpoints obtained via peer exchange.
-func (p *Peers) Merge(peer Peer) error { return nil }
+// List returns a list of all peers.
+func (p *Peers) List() []Peer { return nil }
 
 // Set sets a peer, replacing the existing entry (by ID) if any.
 func (p *Peers) Set(peer Peer) error { return nil }
