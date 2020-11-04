@@ -45,13 +45,18 @@ type Transport interface {
 
 // Connection represents a single secure connection to an address. It contains
 // separate logical streams that can read or write raw bytes.
+//
+// Callers are responsible for authenticating the remote peer's pubkey
+// against known information, i.e. the node ID. Otherwise they are vulnerable
+// to MitM attacks.
 type Connection interface {
 	// Stream returns a reference to a stream within the connection, identified
 	// by an arbitrary stream ID. Multiple calls return the same stream. Any
 	// errors should be returned via the Stream interface.
 	Stream(StreamID) Stream
 
-	// PubKey returns the public key of the remote peer.
+	// PubKey returns the public key of the remote peer. It should not change
+	// after the connection has been established.
 	PubKey() crypto.PubKey
 
 	// Close closes the connection.
