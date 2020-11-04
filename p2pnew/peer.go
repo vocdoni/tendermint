@@ -1,3 +1,4 @@
+// nolint: structcheck,unused
 package p2p
 
 import (
@@ -26,78 +27,40 @@ type PeerID string
 type PeerStatus string
 
 const (
-	// PeerStatusNew represents a new peer which we haven't tried to contact yet.
-	PeerStatusNew = "new"
-	// PeerStatusUp represents a peer which we have an active connection to.
-	PeerStatusUp = "up"
-	// PeerStatusDown represents a peer which we're temporarily disconnected from.
-	PeerStatusDown = "down"
-	// PeerStatusRemove represents a peer which has been removed.
-	PeerStatusRemoved = "removed"
-	// PeerStatusBanned represents a peer which is banned for misbehavior.
-	PeerStatusBanned = "banned"
+	PeerStatusNew     = "new"     // New peer which we haven't tried to contact yet.
+	PeerStatusUp      = "up"      // Peer which we have an active connection to.
+	PeerStatusDown    = "down"    // Peer which we're temporarily disconnected from.
+	PeerStatusRemoved = "removed" // Peer which has been removed.
+	PeerStatusBanned  = "banned"  // Peer which is banned for misbehavior.
 )
-
-// PeerUpdate is emitted whenever a peer's status changes.
-type PeerUpdate struct {
-	ID     PeerID
-	Status PeerStatus
-}
-
-// PeerUpdates is a subscription for peer updates.
-type PeerUpdates <-chan PeerUpdate
-
-// PeerBanner is a channel that can be used to ban peers.
-type PeerBanner chan<- PeerID
 
 // Peer contains information about a peer.
 type Peer struct {
-	// ID contains the peer's node ID.
-	ID PeerID
-	// Status contains the peer's status.
-	Status PeerStatus
-	// URLs is a list of locally provided peer URLs (e.g. given in config file). These
-	// are kept since we may need to periodically refresh the endpoints from the URLs,
-	// e.g. to pick up DNS changes.
-	URLs []URL
-	// Endpoints contains network endpoints for the node, e.g. IP/port pairs.
-	Endpoints []Endpoint
+	ID        PeerID
+	Status    PeerStatus
+	URLs      []URL      // Peer URLs (e.g. from config), resolved to endpoints when appropriate.
+	Endpoints []Endpoint // Network endpoints, e.g. IP/port pairs.
 }
 
-// Peers tracks information about known peers, used both by Router to keep track
-// of peers, and to gossip peer information to other peers (e.g. via PEX).
+// Peers tracks information about known peers for the Router.
 //
 // FIXME Needs a way to get pending peers and endpoints, and to report endpoint
 // failures.
-type Peers struct{}
+type Peers struct {
+	peers map[PeerID]*Peer // Peers, entire set cached in memory.
+	db    dbm.DB           // Database for persistence, if non-nil.
+}
 
 // NewPeers creates a new peer set, using db for persistence if non-nil.
 func NewPeers(db dbm.DB) (*Peers, error) { return nil, nil }
 
-// Add adds a peer to the set, or merges it with an existing peer.
-func (p *Peers) Add(peer *Peer) error { return nil }
+// Get fetches a peer from the set, and whether it existed or not.
+func (p *Peers) Get(id PeerID) (Peer, bool) { return Peer{}, false }
 
-// Get fetches a peer from the set, if it exists.
-func (p *Peers) Get(id PeerID) *Peer { return nil }
+// Merge merges a peer with an existing entry (by ID) if any. This is useful
+// e.g. to add peer URLs from a config file or endpoints from DNS lookups while
+// also keeping reported peer endpoints obtained via peer exchange.
+func (p *Peers) Merge(peer Peer) error { return nil }
 
-// GetPending returns a peer from the list that is pending connection,
-// or nil if no suitable peer is found. If wait is true, the call will
-// block until a new pending peer is found.
-func (p *Peers) GetPending(wait bool) *Peer { return nil }
-
-// SetStatus sets the status of a peer.
-func (p *Peers) SetStatus(id PeerID, status PeerStatus) {}
-
-// Subscribe subscribes to peer status changes until the given context is
-// cancelled. The returned channel is buffered, but the caller must process
-// updates in a timely fashion to avoid blocking updates, and must drain the
-// channel after cancelling the context.
-//
-// If currentUp is true, the channel is pre-populated with all peers that have
-// PeerStatusUp at the time of the call. This is convenient for reactors that
-// need to know about currently connected peers on startup.
-func (p *Peers) Subscribe(ctx context.Context, currentUp bool) PeerUpdates { return nil }
-
-// Banner returns a channel that can be used to ban peers.
-// FIXME This should probably be moved into Router.
-func (p *Peers) Banner() PeerBanner { return nil }
+// Set sets a peer, replacing the existing entry (by ID) if any.
+func (p *Peers) Set(peer Peer) error { return nil }
