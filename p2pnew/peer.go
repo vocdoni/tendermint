@@ -11,7 +11,8 @@ import (
 // URL represents an externally provided peer address, which is resolved into a
 // set of specific transport endpoints. For example, the URL may contain a DNS
 // hostname which is resolved into a set of IP addresses. The URL scheme
-// specifies which transport to use, e.g. mconn://validator.foo.com:26657.
+// specifies which transport to use, e.g. mconn://validator.foo.com:26657 or
+// unix:///var/run/tendermint.sock.
 type URL url.URL
 
 // Resolve resolves the URL into a set of endpoints (e.g. resolving a DNS name
@@ -34,10 +35,20 @@ const (
 	PeerStatusBanned  = "banned"  // Peer which is banned for misbehavior.
 )
 
+// PeerPriority contains peer priorities.
+type PeerPriority int
+
+const (
+	PeerPriorityNormal PeerPriority = iota + 1
+	PeerPriorityValidator
+	PeerPriorityPersistent
+)
+
 // Peer contains information about a peer.
 type Peer struct {
 	ID        PeerID
 	Status    PeerStatus
+	Priority  PeerPriority
 	URLs      []URL      // Peer URLs (e.g. from config), resolved to endpoints when appropriate.
 	Endpoints []Endpoint // Network endpoints, e.g. IP/port pairs.
 }
