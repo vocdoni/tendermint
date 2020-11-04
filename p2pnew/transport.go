@@ -24,8 +24,6 @@ type Endpoint struct {
 	// protocol specifies the endpoint protocol, e.g. mconn or quic. The Router
 	// uses this to map an endpoint onto a Transport.
 	protocol string
-	// network specifies the network kind (as Go's net.Addr.Network), e.g. ip, tcp, or udp.
-	network string
 	// address specifies the network address, e.g. an IP:port pair or UNIX file path.
 	address string
 	// ip contains the IP address of a remote endpoint, or nil if local. All
@@ -35,18 +33,11 @@ type Endpoint struct {
 	ip net.IP
 }
 
-// Endpoint implements net.Addr.
-var _ net.Addr = Endpoint{}
-
-func (a Endpoint) Network() string { return a.network }
-func (a Endpoint) String() string  { return a.address }
-
-// Transport represents an underlying network transport. It creates connections
-// to/from an address, and sends raw bytes across separate streams within this
-// connection.
+// Transport represents a network transport that can provide both inbound
+// and outbound connections.
 type Transport interface {
 	// Accept waits for the next inbound connection.
-	Accept() (Connection, error)
+	Accept(context.Context) (Connection, error)
 
 	// Dial creates an outbound connection to an endpoint.
 	Dial(context.Context, Endpoint) (Connection, error)
@@ -69,10 +60,11 @@ type Connection interface {
 
 // Stream represents a single logical IO stream within a connection.
 //
-// FIXME For compatibility with the old MConn protocol, a single Write call must
-// correspond to a single logical message such that we can set PacketMsg.EOF at
-// the end of the message. Once we can change the protocol or remove MConn, we
-// should change this requirement such that the byte slices are arbitrary.
+// FIXME For compatibility with the old MConn protocol, a single Write or Read
+// call must correspond to a single logical message such that we can set
+// PacketMsg.EOF at the end of the message. Once we can change the protocol or
+// remove MConn, we should drop this requirement such that the given byte slices
+// are arbitrary data.
 type Stream interface {
 	io.Reader // Read([]byte) (int, error)
 	io.Writer // Write([]byte) (int, error)

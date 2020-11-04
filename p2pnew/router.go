@@ -29,9 +29,9 @@ type Envelope struct {
 // that channel are discarded.
 type Router struct{}
 
-// NewRouter creates a new router. Listeners are pre-initialized transports that
-// accept connections from peers.
-func NewRouter(listeners []Transport) *Router { return nil }
+// NewRouter creates a new router. Transports must be pre-initialized to listen
+// on any necessary interfaces, and keyed by endpoint protocol name.
+func NewRouter(transports map[string]Transport) *Router { return nil }
 
 // Open opens a channel. A channel can only be opened once, until closed.
 func (r *Router) Open(id ChannelID) (Channel, error) { return Channel{}, nil }
