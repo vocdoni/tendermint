@@ -10,10 +10,10 @@ type ChannelID StreamID
 
 // Envelope is a wrapper for a message with a from/to address.
 type Envelope struct {
-	// From contains the message sender, or nil for outbound messages.
-	From *Peer
-	// To represents the message receiver, or nil for inbound messages.
-	To *Peer
+	// From contains the message sender, or empty for outbound messages.
+	From PeerID
+	// To represents the message receiver, or empty for inbound messages.
+	To PeerID
 	// Broadcast sends an outbound message to all known peers, ignoring To.
 	Broadcast bool
 	// Message is the payload.
@@ -33,7 +33,7 @@ type Router struct{}
 // on any necessary interfaces, and keyed by endpoint protocol name.
 func NewRouter(transports map[string]Transport) *Router { return nil }
 
-// Open opens a channel. A channel can only be opened once, until closed.
+// Open opens a channel. A channel ID can only be used once, until closed.
 func (r *Router) Open(id ChannelID) (Channel, error) { return Channel{}, nil }
 
 // Channel represents a logically separate bidirectional channel for Protobuf
