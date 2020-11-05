@@ -88,7 +88,7 @@ func (r *Router) PeerErrors() chan<- PeerError { return nil }
 // the context to end the subscription, and keep consuming messages in a timely
 // fashion until the channel is closed to avoid blocking updates.
 //
-// FIXME This should possibly be implemented via an Peers.OnUpdate() hook
+// FIXME This should possibly be implemented via an PeerStore.OnUpdate() hook
 // or something similar, to trigger notifications from the central data
 // location rather than spread around the Router. This is left as an
 // implementation detail.
@@ -117,6 +117,18 @@ type Channel struct {
 	// the peer goes offline, if the peer is overloaded, or for any other
 	// reason.
 	Out chan<- Envelope
+
+	// Wrapper is a function that wraps outbound messages in a container message.
+	// Since a channel can only pass messages of one type, the wrapper can be
+	// used to take a variety or input messages and place them in a container
+	// message, e.g. with a Protobuf oneof field. Should return nil if the message
+	// could not be wrapped.
+	Wrapper func(proto.Message) proto.Message
+
+	// Unwrapper is a function that unwraps inbound messages within a container
+	// message. It is the inverse of Wrapper. Should return nil if the message
+	// could not be unwrapped.
+	Unwrapper func(proto.Message) proto.Message
 }
 
 // Close closes the channel, making it unusable. The ID can be reused. It is

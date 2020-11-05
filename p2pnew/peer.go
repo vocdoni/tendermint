@@ -54,7 +54,6 @@ type Peer struct {
 	ID        PeerID
 	Status    PeerStatus
 	Priority  PeerPriority
-	Addresses []PeerAddress              // Peer addresses, from e.g. config or PEX.
 	Endpoints map[PeerAddress][]Endpoint // Resolved endpoints by address.
 }
 
