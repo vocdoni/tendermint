@@ -37,7 +37,7 @@ const (
 	PeerStatusBanned  = "banned"  // Peer which is banned for misbehavior.
 )
 
-// peerPriority contains peer priorities.
+// PeerPriority contains peer priorities.
 type PeerPriority int
 
 const (
@@ -46,16 +46,16 @@ const (
 	PeerPriorityPersistent
 )
 
-// peer contains information about a peer. It should only be used internally in
+// Peer contains information about a peer. It should only be used internally in
 // the Router, while reactors only get access to the ID and status. This avoids
 // race conditions and lock contention, and decouples reactors from P2P
 // infrastructure.
 type Peer struct {
-	id        PeerID
-	status    PeerStatus
-	priority  PeerPriority
-	addresses []PeerAddress              // Peer addresses, from e.g. config or PEX.
-	endpoints map[PeerAddress][]Endpoint // Resolved endpoints by address.
+	ID        PeerID
+	Status    PeerStatus
+	Priority  PeerPriority
+	Addresses []PeerAddress              // Peer addresses, from e.g. config or PEX.
+	Endpoints map[PeerAddress][]Endpoint // Resolved endpoints by address.
 }
 
 // PeerStore tracks information about known peers for the Router.

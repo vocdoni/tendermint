@@ -65,8 +65,15 @@ type Router struct{}
 // on any necessary interfaces, and keyed by endpoint protocol name.
 func NewRouter(transports map[string]Transport) *Router { return nil }
 
-// Open opens a channel. A channel ID can only be used once, until closed.
-func (r *Router) Open(id ChannelID) (Channel, error) { return Channel{}, nil }
+// Open opens a channel. A channel ID can only be used once, until closed. The
+// messageType should be an empty Protobuf message of the type that will be
+// passed through the channel, and is used primarily for automatic unmarshaling.
+//
+// The channel automatically encodes and/or decodes Protobuf messages using
+// length-prefixed (aka length-delimited) framing. Invalid encodings are dropped.
+func (r *Router) Open(id ChannelID, messageType proto.Message) (Channel, error) {
+	return Channel{}, nil
+}
 
 // PeerErrors returns a channel that can be used to submit peer errors. The
 // error specifies an action to take for the peer as well, e.g. disconnect

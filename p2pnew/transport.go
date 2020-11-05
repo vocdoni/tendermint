@@ -17,10 +17,10 @@ type StreamID uint8
 //
 // Endpoints are represented as URLs, where some fields have special meaning:
 //
+// - User: ignored. The PeerAddress uses this for PeerID, but this will be verified at the
+//   Router level.
 // - Host: if set, must be an IP address (v4 or v6), and defines this as a networked endpoint.
-// - Port: if set, Host must be set as well, and can be interpreted both as a TCP or UDP port
-//   (this may be used e.g. when configuring NAT routers via UPnP). If not given, UPnP and
-//   such cannot be used, but the
+// - Port: if set, Host must be set as well, and can be interpreted both as a TCP or UDP port.
 //
 // Host has implications for how the endpoint is advertised to peers, e.g.
 // if set the IP address should only be advertised to peers that have access
@@ -28,6 +28,9 @@ type StreamID uint8
 // network, while public IPs can be advertised to anyone). If Host is not set,
 // this is considered a non-networked transport, and should only be advertised
 // to peers using other non-networked transports.
+//
+// Port has implications for UPnP and similar autoconfiguration technologies. If
+// set, the Router may attempt to autoconfigure NAT gateways via UPnP.
 type Endpoint struct {
 	url.URL
 	// may contain additional fields to track e.g. failure statistics,
@@ -36,7 +39,7 @@ type Endpoint struct {
 
 // PeerAddress converts the endpoint into a peer address, used e.g. to advertise
 // the local node's transport endpoints to other peers.
-func (e Endpoint) PeerAddress() PeerAddress { return PeerAddress{} }
+func (e Endpoint) PeerAddress(id PeerID) PeerAddress { return PeerAddress{} }
 
 // Transport represents a network transport that can provide both inbound
 // and outbound connections to peer endpoints. Connections must be encrypted
@@ -89,11 +92,11 @@ type Connection interface {
 
 // Stream represents a single logical IO stream within a connection.
 //
-// FIXME For compatibility with the old MConn protocol, a single Write or Read
-// call must correspond to a single logical message such that we can set
-// PacketMsg.EOF at the end of the message. Once we can change the protocol or
-// remove MConn, we should drop this requirement such that the given byte slices
-// are arbitrary data.
+// FIXME For compatibility with the old MConn protocol, a single Write call must
+// correspond to a single logical message such that we can set PacketMsg.EOF at
+// the end of the message. Once we can change the protocol or remove MConn, we
+// should drop this requirement such that the given byte slices are arbitrary
+// data.
 type Stream interface {
 	io.Reader // Read([]byte) (int, error)
 	io.Writer // Write([]byte) (int, error)
