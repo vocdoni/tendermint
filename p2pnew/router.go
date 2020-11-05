@@ -30,6 +30,9 @@ type PeerError struct {
 
 func (e PeerError) Error() string { return fmt.Sprintf("Peer %q error: %v", e.ID, e.Err) }
 
+// PeerErrors is a channel for submitting peer errors.
+type PeerErrors chan<- PeerError
+
 // PeerAction is an action to take for a peer error.
 type PeerAction string
 
@@ -45,6 +48,9 @@ type PeerUpdate struct {
 	ID     PeerID
 	Status PeerStatus
 }
+
+// PeerUpdates is a channel for receiving peer updates.
+type PeerUpdates <-chan PeerUpdate
 
 // Router maintains connections to peers and route Protobuf messages between
 // them and local reactors.
@@ -71,9 +77,7 @@ func NewRouter(transports map[string]Transport) *Router { return nil }
 //
 // The channel automatically encodes and/or decodes Protobuf messages using
 // length-prefixed (aka length-delimited) framing. Invalid encodings are dropped.
-func (r *Router) Open(id ChannelID, messageType proto.Message) (Channel, error) {
-	return Channel{}, nil
-}
+func (r *Router) Open(id ChannelID, messageType proto.Message) (*Channel, error) { return nil, nil }
 
 // PeerErrors returns a channel that can be used to submit peer errors. The
 // error specifies an action to take for the peer as well, e.g. disconnect
