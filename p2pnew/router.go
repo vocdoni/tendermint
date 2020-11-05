@@ -10,7 +10,8 @@ import (
 // ChannelID is an arbitrary channel ID, and maps direcly onto a stream ID.
 type ChannelID StreamID
 
-// Envelope is a wrapper for a message with a from/to address.
+// Envelope is a wrapper for a message with a from/to address. Inbound messages
+// must have From set, and outbound messages must have To or Broadcast set.
 type Envelope struct {
 	From      PeerID        // Message sender, or empty for outbound messages.
 	To        PeerID        // Message receiver, or empty for inbound messages.
@@ -82,28 +83,31 @@ func (r *Router) PeerErrors() chan<- PeerError { return nil }
 // implementation detail.
 func (r *Router) PeerUpdates(ctx context.Context) <-chan PeerUpdate { return nil }
 
-// Channel represents a logically separate bidirectional channel for Protobuf
-// messages.
+// Channel represents a logically distinct bidirectional channel for Protobuf
+// messages, via which all known peers can be reached. They are sent across
+// separate streams in the transport connection, one per peer.
 type Channel struct {
-	// ID contains the channel ID.
+	// ID contains the channel ID. It should not be changed.
 	ID ChannelID
+
+	// In is a channel for receiving inbound messages. Envelope will always have
+	// From and Message set.
+	//
+	// The scheduling of incoming messages is an implementation detail that is
+	// managed by the router. This could be done using any number of algorithms,
+	// e.g. FIFO, round-robin, priority queues, or some other scheme.
+	In <-chan Envelope
+
+	// Out is a channel for sending outbound messages. Envelope must have To (or
+	// Broadcast) and Message set, otherwise it is discarded.
+	//
+	// Messages are not guaranteed to be delivered, and may be dropped e.g. if
+	// the peer goes offline, if the peer is overloaded, or for any other
+	// reason.
+	Out chan<- Envelope
 }
 
 // Close closes the channel, making it unusable. The ID can be reused. It is
-// the caller's responsibility to close the channel.
+// the caller's responsibility to close the channel. It is equivalent to
+// close(Channel.Out). After closing, the Router will close Channel.In
 func (c *Channel) Close() error { return nil }
-
-// Receive returns a Go channel that receives messages from peers. Envelope will
-// always have From and Message set.
-//
-// The scheduling of incoming messages is an implementation detail that is
-// managed by the router. This could be done using any number of algorithms,
-// e.g. FIFO, round-robin, priority queues, or some other scheme.
-func (c *Channel) Receive() <-chan Envelope { return nil }
-
-// Send returns a Go channel that sends messages to peers. Envelope must have To
-// (or Broadcast) and Message set, otherwise it is discarded.
-//
-// Messages are not guaranteed to be delivered, and may be dropped e.g. if the
-// peer goes offline, if the peer is overloaded, or for any other reason.
-func (c *Channel) Send() chan<- Envelope { return nil }

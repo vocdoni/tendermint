@@ -1,9 +1,5 @@
 package p2p
 
-// Transports securely connect to network addresses using public key
-// cryptography, and send/receive raw bytes across logically distinct streams.
-// They don't know about peers or messages.
-
 import (
 	"context"
 	"io"
@@ -23,7 +19,8 @@ type StreamID uint8
 //
 // - Host: if set, must be an IP address (v4 or v6), and defines this as a networked endpoint.
 // - Port: if set, Host must be set as well, and can be interpreted both as a TCP or UDP port
-//   (this may be used e.g. when configuring NAT routers via UPnP).
+//   (this may be used e.g. when configuring NAT routers via UPnP). If not given, UPnP and
+//   such cannot be used, but the
 //
 // Host has implications for how the endpoint is advertised to peers, e.g.
 // if set the IP address should only be advertised to peers that have access
@@ -42,9 +39,11 @@ type Endpoint struct {
 func (e Endpoint) PeerAddress() PeerAddress { return PeerAddress{} }
 
 // Transport represents a network transport that can provide both inbound
-// and outbound connections.
+// and outbound connections to peer endpoints. Connections must be encrypted
+// (i.e. the peer must be able to provide a public key), and must support
+// separate logical streams of raw bytes.
 type Transport interface {
-	// Accept waits for the next inbound connection.
+	// Accept waits for the next inbound connection until the context is cancelled.
 	Accept(context.Context) (Connection, error)
 
 	// Dial creates an outbound connection to an endpoint.
@@ -53,7 +52,7 @@ type Transport interface {
 	// Endpoints returns a list of endpoints the transport is listening on.
 	// Any IP addresses do not need to be normalized or otherwise preprocessed
 	// by the transport (this will be done elsewhere before advertising them to
-	// peers).
+	// peers, e.g. by expanding out 0.0.0.0 to local interface addresses).
 	Endpoints() []Endpoint
 
 	// Protocols returns a list of protocols (aka schemes) that this Transport
