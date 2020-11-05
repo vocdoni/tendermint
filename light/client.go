@@ -123,7 +123,7 @@ type Client struct {
 	providerMutex tmsync.Mutex
 	// Primary provider of new headers.
 	primary provider.Provider
-	// See Witnesses option
+	// Providers used to "witness" new headers.
 	witnesses []provider.Provider
 
 	// Where trusted light blocks are stored.
@@ -218,7 +218,7 @@ func NewClientFromTrustedStore(
 	}
 
 	// Validate the number of witnesses.
-	if len(c.witnesses) < 1 && c.verificationMode == skipping {
+	if len(c.witnesses) < 1 {
 		return nil, errNoWitnesses{}
 	}
 
@@ -356,13 +356,18 @@ func (c *Client) initializeWithTrustOptions(ctx context.Context, options TrustOp
 		return fmt.Errorf("expected header's hash %X, but got %X", options.Hash, l.Hash())
 	}
 
-	// Ensure that +2/3 of validators signed correctly.
+	// 2) Ensure that +2/3 of validators signed correctly.
 	err = l.ValidatorSet.VerifyCommitLight(c.chainID, l.Commit.BlockID, l.Height, l.Commit)
 	if err != nil {
 		return fmt.Errorf("invalid commit: %w", err)
 	}
 
-	// 3) Persist both of them and continue.
+	// 3) Cross-verify with witnesses to ensure everybody has the same state.
+	if err := c.compareFirstHeaderWithWitnesses(ctx, l.SignedHeader); err != nil {
+		return err
+	}
+
+	// 4) Persist both of them and continue.
 	return c.updateTrustedLightBlock(l)
 }
 
@@ -436,7 +441,7 @@ func (c *Client) Update(ctx context.Context, now time.Time) (*types.LightBlock, 
 }
 
 // VerifyLightBlockAtHeight fetches the light block at the given height
-// and calls verifyLightBlock. It returns the block immediately if it exists in
+// and verifies it. It returns the block immediately if it exists in
 // the trustedStore (no verification is needed).
 //
 // height must be > 0.
@@ -593,6 +598,7 @@ func (c *Client) verifySequential(
 		verifiedBlock = trustedBlock
 		interimBlock  *types.LightBlock
 		err           error
+		trace         = []*types.LightBlock{trustedBlock}
 	)
 
 	for height := trustedBlock.Height + 1; height <= newLightBlock.Height; height++ {
@@ -662,9 +668,17 @@ func (c *Client) verifySequential(
 
 		// 3) Update verifiedBlock
 		verifiedBlock = interimBlock
+
+		// 4) Add verifiedBlock to trace
+		trace = append(trace, verifiedBlock)
 	}
 
-	return nil
+	// Compare header with the witnesses to ensure it's not a fork.
+	// More witnesses we have, more chance to notice one.
+	//
+	// CORRECTNESS ASSUMPTION: there's at least 1 correct full node
+	// (primary or one of the witnesses).
+	return c.detectDivergence(ctx, trace, now)
 }
 
 // see VerifyHeader
@@ -980,6 +994,52 @@ func (c *Client) lightBlockFromPrimary(ctx context.Context, height int64) (*type
 		return c.lightBlockFromPrimary(ctx, height)
 	}
 	return l, err
+}
+
+// compareFirstHeaderWithWitnesses compares h with all witnesses. If any
+// witness reports a different header than h, the function returns an error.
+func (c *Client) compareFirstHeaderWithWitnesses(ctx context.Context, h *types.SignedHeader) error {
+	compareCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	if len(c.witnesses) < 1 {
+		return errNoWitnesses{}
+	}
+
+	errc := make(chan error, len(c.witnesses))
+	for i, witness := range c.witnesses {
+		go c.compareNewHeaderWithWitness(compareCtx, errc, h, witness, i)
+	}
+
+	witnessesToRemove := make([]int, 0, len(c.witnesses))
+
+	// handle errors from the header comparisons as they come in
+	for i := 0; i < cap(errc); i++ {
+		err := <-errc
+
+		switch e := err.(type) {
+		case nil:
+			continue
+		case errConflictingHeaders:
+			c.logger.Error(fmt.Sprintf(`Witness #%d has a different header. Please check primary is correct
+and remove witness. Otherwise, use the different primary`, e.WitnessIndex), "witness", c.witnesses[e.WitnessIndex])
+			return err
+		case errBadWitness:
+			// If witness sent us an invalid header, then remove it. If it didn't
+			// respond or couldn't find the block, then we ignore it and move on to
+			// the next witness.
+			if _, ok := e.Reason.(provider.ErrBadLightBlock); ok {
+				c.logger.Info("Witness sent us invalid header / vals -> removing it", "witness", c.witnesses[e.WitnessIndex])
+				witnessesToRemove = append(witnessesToRemove, e.WitnessIndex)
+			}
+		}
+	}
+
+	for _, idx := range witnessesToRemove {
+		c.removeWitness(idx)
+	}
+
+	return nil
 }
 
 func hash2str(hash []byte) string {

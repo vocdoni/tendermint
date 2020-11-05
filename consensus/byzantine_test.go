@@ -112,7 +112,7 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 		require.NoError(t, err)
 		blocksSubs = append(blocksSubs, blocksSub)
 
-		if css[i].state.LastBlockHeight == 0 { //simulate handle initChain in handshake
+		if css[i].state.LastBlockHeight == 0 { // simulate handle initChain in handshake
 			err = css[i].blockExec.Store().Save(css[i].state)
 			require.NoError(t, err)
 		}
@@ -162,12 +162,12 @@ func TestByzantinePrevoteEquivocation(t *testing.T) {
 	defer stopConsensusNet(log.TestingLogger(), reactors, eventBuses)
 
 	// Evidence should be submitted and committed at the third height but
-	// we will check the first five just in case
+	// we will check the first six just in case
 	evidenceFromEachValidator := make([]types.Evidence, nValidators)
 
 	wg := new(sync.WaitGroup)
 	wg.Add(4)
-	for height := 1; height < 5; height++ {
+	for height := 1; height < 6; height++ {
 		for i := 0; i < nValidators; i++ {
 			go func(j int) {
 				msg := <-blocksSubs[j].Out()
@@ -276,7 +276,7 @@ func TestByzantineConflictingProposalsWithPartition(t *testing.T) {
 		}
 
 		reactors[i] = conRI
-		err = css[i].blockExec.Store().Save(css[i].state) //for save height 1's validators info
+		err = css[i].blockExec.Store().Save(css[i].state) // for save height 1's validators info
 		require.NoError(t, err)
 	}
 

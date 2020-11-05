@@ -11,7 +11,7 @@ import (
 //-----------------------------------------------------
 // Validate block
 
-func validateBlock(evidencePool EvidencePool, state State, block *types.Block) error {
+func validateBlock(state State, block *types.Block) error {
 	// Validate internal consistency.
 	if err := block.ValidateBasic(); err != nil {
 		return err
@@ -136,11 +136,10 @@ func validateBlock(evidencePool EvidencePool, state State, block *types.Block) e
 			block.Height, state.InitialHeight)
 	}
 
-	// Check evidence doesn't exceed the limit. MaxNumEvidence is capped at uint16, so conversion is always safe.
-	if max, got := int(state.ConsensusParams.Evidence.MaxNum), len(block.Evidence.Evidence); got > max {
+	// Check evidence doesn't exceed the limit amount of bytes.
+	if max, got := state.ConsensusParams.Evidence.MaxBytes, block.Evidence.ByteSize(); got > max {
 		return types.NewErrEvidenceOverflow(max, got)
 	}
 
-	// Validate all evidence.
-	return evidencePool.CheckEvidence(block.Evidence.Evidence)
+	return nil
 }

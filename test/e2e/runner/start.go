@@ -10,11 +10,30 @@ import (
 
 func Start(testnet *e2e.Testnet) error {
 
-	// Sort nodes by starting order
+	// Nodes are already sorted by name. Sort them by name then startAt,
+	// which gives the overall order startAt, mode, name.
 	nodeQueue := testnet.Nodes
+	sort.SliceStable(nodeQueue, func(i, j int) bool {
+		a, b := nodeQueue[i], nodeQueue[j]
+		switch {
+		case a.Mode == b.Mode:
+			return false
+		case a.Mode == e2e.ModeSeed:
+			return true
+		case a.Mode == e2e.ModeValidator && b.Mode == e2e.ModeFull:
+			return true
+		}
+		return false
+	})
 	sort.SliceStable(nodeQueue, func(i, j int) bool {
 		return nodeQueue[i].StartAt < nodeQueue[j].StartAt
 	})
+	if len(nodeQueue) == 0 {
+		return fmt.Errorf("no nodes in testnet")
+	}
+	if nodeQueue[0].StartAt > 0 {
+		return fmt.Errorf("no initial nodes in testnet")
+	}
 
 	// Start initial nodes (StartAt: 0)
 	logger.Info("Starting initial network nodes...")
@@ -24,7 +43,7 @@ func Start(testnet *e2e.Testnet) error {
 		if err := execCompose(testnet.Dir, "up", "-d", node.Name); err != nil {
 			return err
 		}
-		if _, err := waitForNode(node, 0, 10*time.Second); err != nil {
+		if _, err := waitForNode(node, 0, 15*time.Second); err != nil {
 			return err
 		}
 		logger.Info(fmt.Sprintf("Node %v up on http://127.0.0.1:%v", node.Name, node.ProxyPort))
@@ -56,7 +75,7 @@ func Start(testnet *e2e.Testnet) error {
 		if err := execCompose(testnet.Dir, "up", "-d", node.Name); err != nil {
 			return err
 		}
-		status, err := waitForNode(node, node.StartAt, 30*time.Second)
+		status, err := waitForNode(node, node.StartAt, 1*time.Minute)
 		if err != nil {
 			return err
 		}

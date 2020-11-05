@@ -1,13 +1,11 @@
 package types
 
 import (
-	"fmt"
-	"reflect"
-
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/ed25519"
 	cryptoenc "github.com/tendermint/tendermint/crypto/encoding"
+	"github.com/tendermint/tendermint/crypto/secp256k1"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 )
 
@@ -15,13 +13,15 @@ import (
 // Use strings to distinguish types in ABCI messages
 
 const (
-	ABCIPubKeyTypeEd25519 = "ed25519"
+	ABCIPubKeyTypeEd25519   = ed25519.KeyType
+	ABCIPubKeyTypeSecp256k1 = secp256k1.KeyType
 )
 
 // TODO: Make non-global by allowing for registration of more pubkey types
 
 var ABCIPubKeyTypesToNames = map[string]string{
-	ABCIPubKeyTypeEd25519: ed25519.PubKeyName,
+	ABCIPubKeyTypeEd25519:   ed25519.PubKeyName,
+	ABCIPubKeyTypeSecp256k1: secp256k1.PubKeyName,
 }
 
 //-------------------------------------------------------
@@ -105,29 +105,6 @@ func (tm2pb) ConsensusParams(params *tmproto.ConsensusParams) *abci.ConsensusPar
 		},
 		Evidence:  &params.Evidence,
 		Validator: &params.Validator,
-	}
-}
-
-// ABCI Evidence includes information from the past that's not included in the evidence itself
-// so Evidence types stays compact.
-// XXX: panics on nil or unknown pubkey type
-func (tm2pb) Evidence(ev Evidence, valSet *ValidatorSet) abci.Evidence {
-
-	// set type
-	var evType abci.EvidenceType
-	switch ev.(type) {
-	case *DuplicateVoteEvidence:
-		evType = abci.EvidenceType_DUPLICATE_VOTE
-	case *LightClientAttackEvidence:
-		evType = abci.EvidenceType_LIGHT_CLIENT_ATTACK
-	default:
-		panic(fmt.Sprintf("unknown evidence type: %v %v", ev, reflect.TypeOf(ev)))
-	}
-
-	return abci.Evidence{
-		Type:             evType,
-		Height:           ev.Height(),
-		TotalVotingPower: valSet.TotalVotingPower(),
 	}
 }
 

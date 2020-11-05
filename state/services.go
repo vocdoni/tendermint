@@ -1,9 +1,6 @@
 package state
 
 import (
-	"time"
-
-	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/types"
 )
 
@@ -43,24 +40,22 @@ type BlockStore interface {
 
 // EvidencePool defines the EvidencePool interface used by State.
 type EvidencePool interface {
-	PendingEvidence(uint32) []types.Evidence
+	PendingEvidence(maxBytes int64) (ev []types.Evidence, size int64)
 	AddEvidence(types.Evidence) error
-	Update(State)
+	Update(State, types.EvidenceList)
 	CheckEvidence(types.EvidenceList) error
-	ABCIEvidence(int64, []types.Evidence) []abci.Evidence
 }
 
 // EmptyEvidencePool is an empty implementation of EvidencePool, useful for testing. It also complies
 // to the consensus evidence pool interface
 type EmptyEvidencePool struct{}
 
-func (EmptyEvidencePool) PendingEvidence(uint32) []types.Evidence       { return nil }
-func (EmptyEvidencePool) AddEvidence(types.Evidence) error              { return nil }
-func (EmptyEvidencePool) Update(State)                                  {}
-func (EmptyEvidencePool) CheckEvidence(evList types.EvidenceList) error { return nil }
-func (EmptyEvidencePool) ABCIEvidence(int64, []types.Evidence) []abci.Evidence {
-	return []abci.Evidence{}
+func (EmptyEvidencePool) PendingEvidence(maxBytes int64) (ev []types.Evidence, size int64) {
+	return nil, 0
 }
-func (EmptyEvidencePool) AddEvidenceFromConsensus(types.Evidence, time.Time, *types.ValidatorSet) error {
+func (EmptyEvidencePool) AddEvidence(types.Evidence) error              { return nil }
+func (EmptyEvidencePool) Update(State, types.EvidenceList)              {}
+func (EmptyEvidencePool) CheckEvidence(evList types.EvidenceList) error { return nil }
+func (EmptyEvidencePool) AddEvidenceFromConsensus(evidence types.Evidence) error {
 	return nil
 }
