@@ -19,6 +19,15 @@ type Envelope struct {
 	Message   proto.Message // Payload.
 }
 
+// Wrapper is a container message that can contain a variety of inner messages.
+// If a Channel message type implements Wrapper, the channel will try to wrap
+// any other message types in the container message to support multiple types.
+type Wrapper interface {
+	proto.Message
+	Wrap(proto.Message) error
+	Unwrap() (proto.Message, error)
+}
+
 // PeerError is a peer error reported by a reactor via a Router.PeerErrors()
 // channel. The error will be logged, and depending on the action the peer may
 // be disconnected or banned.
@@ -73,7 +82,15 @@ func NewRouter(transports []Transport) *Router { return nil }
 
 // Open opens a channel. A channel ID can only be used once, until closed. The
 // messageType should be an empty Protobuf message of the type that will be
-// passed through the channel, and is used primarily for automatic unmarshaling.
+// passed through the channel. A channel only supports a single message type,
+// since it needs to know what message type to unmarshal into.
+//
+// However, if messageType also implements Wrapper, then any other message types
+// passed via the channel will be automatically wrapped and unwrapped by the
+// outer message type (if possible). This allows the channel message type to
+// be e.g. a oneof Protobuf message, and any message types that are supported
+// by the oneof can be passed directly through the channel and are automatically
+// wrapped/unwrapped in the container message.
 //
 // The channel automatically encodes and/or decodes Protobuf messages using
 // length-prefixed (aka length-delimited) framing. Invalid encodings are dropped.
@@ -117,18 +134,6 @@ type Channel struct {
 	// the peer goes offline, if the peer is overloaded, or for any other
 	// reason.
 	Out chan<- Envelope
-
-	// Wrapper is a function that wraps outbound messages in a container message.
-	// Since a channel can only pass messages of one type, the wrapper can be
-	// used to take a variety or input messages and place them in a container
-	// message, e.g. with a Protobuf oneof field. Should return nil if the message
-	// could not be wrapped.
-	Wrapper func(proto.Message) proto.Message
-
-	// Unwrapper is a function that unwraps inbound messages within a container
-	// message. It is the inverse of Wrapper. Should return nil if the message
-	// could not be unwrapped.
-	Unwrapper func(proto.Message) proto.Message
 }
 
 // Close closes the channel, making it unusable. The ID can be reused. It is

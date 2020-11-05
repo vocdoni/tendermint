@@ -12,34 +12,40 @@ import (
 // reactors are just "something that listens on a channel", and can be
 // implemented in any number of ways. Below is an example.
 
-// ExampleMessage is an example Protobuf message. We just use statesync.Message.
-type ExampleMessage = statesync.Message
+// ExampleMessage is an example Protobuf message. We just "inherit" from
+// statesync.Message, but this should usually be a Protobuf-generated message.
+type ExampleMessage struct{ *statesync.Message }
 
-// ExampleWrapper is used to wrap outbound Protobuf messages in a container
-// message, since channels can only pass a single Protobuf message type.
-func ExampleWrapper(msg proto.Message) proto.Message {
-	switch msg := msg.(type) {
-	case *statesync.Message:
-		return msg
+// Wrap implements Wrapper, which allows this message to wrap a variety
+// of other messages. This is useful since a channel can only pass messages
+// of a single type.
+func (m *ExampleMessage) Wrap(inner proto.Message) error {
+	switch inner := inner.(type) {
 	case *statesync.SnapshotsRequest:
-		return &statesync.Message{Sum: &statesync.Message_SnapshotsRequest{SnapshotsRequest: msg}}
+		m.Message.Sum = &statesync.Message_SnapshotsRequest{SnapshotsRequest: inner}
 	case *statesync.SnapshotsResponse:
-		return &statesync.Message{Sum: &statesync.Message_SnapshotsResponse{SnapshotsResponse: msg}}
+		m.Message.Sum = &statesync.Message_SnapshotsResponse{SnapshotsResponse: inner}
+	// These just handle the cases where the message is already wrapped.
+	case *ExampleMessage:
+		*m = *inner
+	case *statesync.Message:
+		m.Message = inner
 	default:
-		return nil
+		return fmt.Errorf("unknown message %T", inner)
 	}
+	return nil
 }
 
-// ExampleUnwrapper unwraps Protobuf messages from a container message, the
-// inverse of ExampleWrapper.
-func ExampleUnwrapper(msg proto.Message) proto.Message {
-	switch msg := msg.(*statesync.Message).Sum.(type) {
+// Unwrap implements Unwrapper, which unwraps the inner message contained in this.
+// It is the inverse of Wrap.
+func (m *ExampleMessage) Unwrap() (proto.Message, error) {
+	switch inner := m.Message.Sum.(type) {
 	case *statesync.Message_SnapshotsRequest:
-		return msg.SnapshotsRequest
+		return inner.SnapshotsRequest, nil
 	case *statesync.Message_SnapshotsResponse:
-		return msg.SnapshotsResponse
+		return inner.SnapshotsResponse, nil
 	default:
-		return nil
+		return nil, fmt.Errorf("unknown message %T", inner)
 	}
 }
 
@@ -82,8 +88,6 @@ func RunExampleReactor(router *Router) error {
 	if err != nil {
 		return err
 	}
-	channel.Wrapper = ExampleWrapper
-	channel.Unwrapper = ExampleUnwrapper
 
 	ExampleReactor(ctx, channel, router.PeerUpdates(ctx), router.PeerErrors())
 	return nil
