@@ -68,8 +68,8 @@ type PeerUpdates <-chan PeerUpdate
 type Router struct{}
 
 // NewRouter creates a new router. Transports must be pre-initialized to listen
-// on any necessary interfaces, and keyed by endpoint protocol name.
-func NewRouter(transports map[string]Transport) *Router { return nil }
+// on any necessary interfaces.
+func NewRouter(transports []Transport) *Router { return nil }
 
 // Open opens a channel. A channel ID can only be used once, until closed. The
 // messageType should be an empty Protobuf message of the type that will be
@@ -94,11 +94,12 @@ func (r *Router) PeerErrors() chan<- PeerError { return nil }
 // implementation detail.
 func (r *Router) PeerUpdates(ctx context.Context) <-chan PeerUpdate { return nil }
 
-// Channel represents a logically distinct bidirectional channel for Protobuf
-// messages, via which all known peers can be reached. They are sent across
-// separate streams in the transport connection, one per peer.
+// Channel represents a logically separate bidirectional channel to exchange
+// Protobuf messages with any known peers. The router will use transport streams
+// to send and receive messages with individual peer, where each channel uses
+// its own distinct stream.
 type Channel struct {
-	// ID contains the channel ID. It should not be changed.
+	// ID contains the channel ID.
 	ID ChannelID
 
 	// In is a channel for receiving inbound messages. Envelope will always have

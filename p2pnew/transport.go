@@ -3,7 +3,7 @@ package p2p
 import (
 	"context"
 	"io"
-	"net/url"
+	"net"
 
 	"github.com/tendermint/tendermint/crypto"
 )
@@ -14,27 +14,30 @@ type StreamID uint8
 
 // Endpoint represents a node endpoint used by Transport to dial a peer. A node
 // can have multiple endpoints, and are usually resolved from a PeerAddress.
-//
-// Endpoints are represented as URLs, where some fields have special meaning:
-//
-// - User: ignored. The PeerAddress uses this for PeerID, but this will be verified at the
-//   Router level.
-// - Host: if set, must be an IP address (v4 or v6), and defines this as a networked endpoint.
-// - Port: if set, Host must be set as well, and can be interpreted both as a TCP or UDP port.
-//
-// Host has implications for how the endpoint is advertised to peers, e.g.
-// if set the IP address should only be advertised to peers that have access
-// to that network (so 192.168.0.0 should only be advertised to peers on that
-// network, while public IPs can be advertised to anyone). If Host is not set,
-// this is considered a non-networked transport, and should only be advertised
-// to peers using other non-networked transports.
-//
-// Port has implications for UPnP and similar autoconfiguration technologies. If
-// set, the Router may attempt to autoconfigure NAT gateways via UPnP.
 type Endpoint struct {
-	url.URL
-	// may contain additional fields to track e.g. failure statistics,
-	// unless we store this in the Router.
+	// Protocol specifies the transport protocol, used by the router to pick a transport.
+	Protocol string
+
+	// Path is a transport-specific path or identifier to connect via. This
+	// corresponds to the path, query-string, fragment, and opaque portions of a
+	// PeerAddress URL. For example, an in-memory transport might use the URL
+	// "memory:foo" to identify a "foo" peer to connect to, where "foo" would
+	// become Path. Similarly, "http://host/path" would place "/path" in Path.
+	Path string
+
+	// IP is the IP address (v4 or v6) to connect to. If set, this defines the
+	// endpoint as a networked endpoint. Networked endpoints are advertised to
+	// peers depending on the IP visibility (e.g. private 192.168.0.0 IPs are
+	// only advertised to peers on this network, but public IPs are advertised
+	// to all peers). Non-networked endpoints are only advertised to other peers
+	// connecting via the same protocol.
+	IP net.IP
+
+	// Port is the network port (either TCP or UDP). If not set, but IP is set,
+	// a default port for the protocol will be used. Note that endpoints
+	// returned by Transport.Endpoints() must set a Port number if they wish to
+	// autoconfigure e.g. UPnP for NAT traversal.
+	Port uint16
 }
 
 // PeerAddress converts the endpoint into a peer address, used e.g. to advertise

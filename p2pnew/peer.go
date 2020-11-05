@@ -66,7 +66,7 @@ type Peer struct {
 // probably be tracked in PeerStore somehow so that it is persisted. This is
 // left as an implementation detail, and probably requires additional methods.
 type PeerStore struct {
-	peers map[PeerID]*Peer // Peers, entire set cached in memory.
+	peers map[PeerID]*Peer // Entire set cached in memory.
 	db    dbm.DB           // Database for persistence, if non-nil.
 }
 
