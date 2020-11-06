@@ -6,7 +6,7 @@
 
 ## Context
 
-[ADR 061](adr-061-p2p-refactor-scope.md) decided to refactor the peer-to-peer (P2P) networking stack. The first phase of this is to redesign and refactor the internal P2P architecture and implementation, while retaining protocol compatibility as far as possible.
+In [ADR 061](adr-061-p2p-refactor-scope.md) we decided to refactor the peer-to-peer (P2P) networking stack. The first phase of this is to redesign and refactor the internal P2P architecture and implementation, while retaining protocol compatibility as far as possible.
 
 ## Alternative Approaches
 
@@ -62,6 +62,7 @@ The initial transport implementation will be a port of the current MConn protoco
 The `Transport` interface is:
 
 ```go
+// Transport is an arbitrary mechanism for exchanging bytes with a peer.
 type Transport interface {
 	// Accept waits for the next inbound connection, or until the context is
 	// cancelled.
@@ -77,13 +78,16 @@ type Transport interface {
 }
 ```
 
+How the transport sets up listening is transport-dependent, and not covered by the interface. This is typically done e.g. during transport construction.
+
 #### Endpoints
 
-`Endpoint` represents a transport endpoint. A connection is always between two endpoints: one at the local node and one at the remote peer. An outbound connection to a remote endpoint is made via a `Dial()` call, and inbound connections to a local endpoint the transport is listening on (as reported by `Endpoints()`) are returned via `Accept()`.
+`Endpoint` represents a transport endpoint. A connection is always between two endpoints: one at the local node and one at the remote peer. An outbound connection to a remote endpoint is made via a `Dial()` call, and inbound connections received via a local endpoint the transport is listening on (as reported by `Endpoints()`) are returned via `Accept()`.
 
 The `Endpoint` struct and related types is:
 
 ```go
+// Endpoint represents a transport endpoint, either local or remote.
 type Endpoint struct {
     // Protocol specifies the transport protocol, used by the router to pick a
     // transport for an endpoint.
@@ -101,12 +105,57 @@ type Endpoint struct {
 	Port uint16
 }
 
+// Protocol identifies a transport protocol.
 type Protocol string
 ```
 
-Endpoints are arbitrary transport-specific addresses, but if they are networked they must use IP addresses, and thus rely on IP as a fundamental packet routing protocol. This is to be able to make certain decisions about address discovery, advertisement, and exchange - for example, a `192.168.0.0/24` IP address should only be advertised to peers on that IP network, while `8.8.8.8` may be advertised to all peers. Similarly, any port numbers if given must represent TCP and/or UDP port numbers, in order to use [UPnP](https://en.wikipedia.org/wiki/Universal_Plug_and_Play) to autoconfigure e.g. NAT gateways.
+Endpoints are arbitrary transport-specific addresses, but if they are networked they must use IP addresses, and thus rely on IP as a fundamental packet routing protocol. This is to enable certain policies about address discovery, advertisement, and exchange - for example, a private `192.168.0.0/24` IP address should only be advertised to peers on that IP network, while the public address `8.8.8.8` may be advertised to all peers. Similarly, any port numbers if given must represent TCP and/or UDP port numbers, in order to use [UPnP](https://en.wikipedia.org/wiki/Universal_Plug_and_Play) to autoconfigure e.g. NAT gateways.
 
-Non-networked endpoints (i.e. with no IP address) are considered local, and will only be advertised to other peers connecting via the same protocol.
+Non-networked endpoints (i.e. with no IP address) are considered local, and will only be advertised to other peers connecting via the same protocol. For example, an in-memory transport might use `Endpoint{Protocol: "memory", Path: "foo"}` as an address for the node "foo", and this should only be advertised to other nodes using `Protocol: "memory"`.
+
+#### Connections and Streams
+
+A connection represents an established transport connection between two endpoints (and thus two nodes), which can be used to exchange arbitrary raw bytes across one or more logically distinct IO streams. Connections are set up either via `Transport.Dial()` (outbound connections) or `Transport.Accept()` (inbound connections).
+
+The caller is responsible for verifying the remote peer's public key as given by the connection. To exchange data, an arbitrary stream ID is picked and the returned stream can be used as an IO reader or writer. Transports are free to implement streams any way they like, e.g. as distinct communication pathways or multiplexed onto one common pathway.
+
+`Connection` and the related `Stream` interfaces are:
+
+```go
+// Connection represents an established connection between two endpoints.
+type Connection interface {
+    // Stream returns a logically distinct IO stream within the connection,
+    // using an arbitrary stream ID. Multiple calls with the same ID return the
+    // same stream.
+	Stream(StreamID) Stream
+
+	// LocalEndpoint returns the local endpoint for the connection.
+	LocalEndpoint() Endpoint
+
+	// RemoteEndpoint returns the remote endpoint for the connection.
+	RemoteEndpoint() Endpoint
+
+	// PubKey returns the public key of the remote peer.
+	PubKey() crypto.PubKey
+
+	// Close closes the connection.
+	Close() error
+}
+
+// StreamID is an arbitrary stream ID.
+type StreamID uint8
+
+// Stream represents a single logical IO stream within a connection.
+//
+// NOTE: For compatibility with the existing MConn protocol, a single Write call
+// must correspond to a single logical message such that PacketMsg.EOF is set at
+// the end of the message. This requirement should be dropped when possible.
+type Stream interface {
+	io.Reader // Read([]byte) (int, error)
+	io.Writer // Write([]byte) (int, error)
+	io.Closer // Close() error
+}
+```
 
 ## Status
 
