@@ -24,6 +24,7 @@ Primary design objectives have been:
 
 * Loose coupling between components, for a simpler architecture with increased testability.
 * Better quality-of-service scheduling of messages, with backpressure and increased performance.
+* Centralized peer lifecycle and connection management.
 * Better peer address detection, advertisement, and exchange.
 * Pluggable transports (not necessarily networked).
 * Backwards compatibility with the current P2P network protocols.
