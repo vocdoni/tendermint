@@ -12,11 +12,16 @@ import (
 // to separate streams as appropriate.
 type StreamID uint8
 
+// Protocol specifies a protocol name. It is used in Endpoints to specify
+// transport protocol, and also by the Router to pick a Transport for an
+// Endpoint.
+type Protocol string
+
 // Endpoint represents a node endpoint used by Transport to dial a peer. A node
 // can have multiple endpoints, and are usually resolved from a PeerAddress.
 type Endpoint struct {
 	// Protocol specifies the transport protocol, used by the router to pick a transport.
-	Protocol string
+	Protocol Protocol
 
 	// Path is a transport-specific path or identifier to connect via. This
 	// corresponds to the path, query-string, fragment, and opaque portions of a
@@ -60,11 +65,6 @@ type Transport interface {
 	// by the transport (this will be done elsewhere before advertising them to
 	// peers, e.g. by expanding out 0.0.0.0 to local interface addresses).
 	Endpoints() []Endpoint
-
-	// Protocols returns a list of protocols (aka schemes) that this Transport
-	// can handle. Only one Transport can use a given protocol. It is used by
-	// Router when looking up a Transport for an Endpoint.
-	Protocols() []string
 }
 
 // Connection represents a single secure connection to an address. It contains

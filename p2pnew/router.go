@@ -78,7 +78,7 @@ type Router struct{}
 
 // NewRouter creates a new router. Transports must be pre-initialized to listen
 // on any necessary interfaces.
-func NewRouter(transports []Transport) *Router { return nil }
+func NewRouter(transports map[Protocol]Transport) *Router { return nil }
 
 // Open opens a channel. A channel ID can only be used once, until closed. The
 // messageType should be an empty Protobuf message of the type that will be
