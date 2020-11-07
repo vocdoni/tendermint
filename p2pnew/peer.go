@@ -24,7 +24,7 @@ type PeerAddress url.URL
 func (a PeerAddress) Resolve(ctx context.Context) []Endpoint { return nil }
 
 // PeerID is a unique peer ID.
-type PeerID string
+type PeerID []byte
 
 // PeerStatus contains the status of a peer.
 type PeerStatus string
@@ -50,36 +50,33 @@ const (
 // the Router, while reactors only get access to the ID and status. This avoids
 // race conditions and lock contention, and decouples reactors from P2P
 // infrastructure.
-type Peer struct {
+type peer struct {
 	ID        PeerID
 	Status    PeerStatus
 	Priority  PeerPriority
 	Endpoints map[PeerAddress][]Endpoint // Resolved endpoints by address.
 }
 
-// PeerStore tracks information about known peers for the Router.
+// peerStore tracks information about known peers for the Router.
 //
 // FIXME The router needs to figure out which peers to connect to, which
 // endpoints to use, and so on. This needs to be based on peer information such
 // as peer priorities, number of connection failures, and so on, which should
 // probably be tracked in PeerStore somehow so that it is persisted. This is
 // left as an implementation detail, and probably requires additional methods.
-type PeerStore struct {
-	peers map[PeerID]*Peer // Entire set cached in memory.
+type peerStore struct {
+	peers map[string]*peer // Entire set in memory, using string(PeerID) keys.
 	db    dbm.DB           // Database for persistence, if non-nil.
 }
 
-// NewPeerStore creates a new peer store, using db for persistence if non-nil.
-func NewPeerStore(db dbm.DB) (*PeerStore, error) { return nil, nil }
-
 // Delete removes a peer from the set.
-func (p *PeerStore) Delete(id PeerID) error { return nil }
+func (p *peerStore) Delete(id PeerID) error { return nil }
 
 // Get fetches a peer from the set, and whether it existed or not.
-func (p *PeerStore) Get(id PeerID) (Peer, bool) { return Peer{}, false }
+func (p *peerStore) Get(id PeerID) (peer, bool) { return peer{}, false }
 
 // List returns a list of all peers.
-func (p *PeerStore) List() []Peer { return nil }
+func (p *peerStore) List() []peer { return nil }
 
 // Set sets a peer, replacing the existing entry (by ID) if any.
-func (p *PeerStore) Set(peer Peer) error { return nil }
+func (p *peerStore) Set(peer peer) error { return nil }

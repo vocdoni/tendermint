@@ -155,6 +155,82 @@ type Stream interface {
 
 A note on backwards-compatibility: the current MConn protocol takes whole messages expressed as byte slices and splits them up into `PacketMsg` messages, where the final packet of a message has `PacketMsg.EOF` set. In order to maintain wire-compatibility with this protocol, the MConn transport needs to be aware of message boundaries, even though it does not care what the messages actually are. One way to handle this is to break abstraction boundaries and have the transport decode the input's length-prefixed message framing and use this to determine message boundaries. Then at some point in the future when we can break protocol compatibility we either remove the MConn protocol completely or drop the `PacketMsg.EOF` field and rely on the length-prefix framing.
 
+### Peers
+
+Peers are remote nodes that we wish to communicate with. Each peer is identified by a unique binary `PeerID`, and has a set of `PeerAddress` addresses expressed as URLs that they can be reached via. Addresses are resolved into one or more transport endpoints, e.g. by resolving DNS hostnames into IP addresses (which should be refreshed periodically). Peers should always be expressed as address URLs, never as endpoints (which are a lower-level construct).
+
+```go
+// PeerID is a unique peer ID, generally used in hex form.
+type PeerID []byte
+
+// PeerAddress is a peer address URL. The User field, if set, gives the
+// hex-encoded remove PeerID, which should be verified with the remote peer's
+// public key as returned by the connection.
+type PeerAddress url.URL
+
+// Resolve resolves a PeerAddress into a set of Endpoints, typically by
+// expanding out any DNS names given in URL.Host to IP addresses. Fields are
+// mapped as follows:
+//
+//   Scheme → Endpoint.Protocol
+//   Host   → Endpoint.IP
+//   Port   → Endpoint.Port
+//   Path+Query+Fragment,Opaque → Endpoint.Path
+//
+func (a PeerAddress) Resolve(ctx context.Context) []Endpoint { return nil }
+```
+
+The P2P stack needs to track a lot of internal information about peers, such as endpoints, status, priorities, and so on, which is done in an internal `peer` struct. This should not be exposed outside of the `p2p` package, to avoid race conditions, lock contention, and tight coupling. Other packages should only refer to peers by `PeerID`.
+
+The `peer` struct might look like the below, but is intentionally underspecified and will depend on implementation requirements:
+
+```go
+// peer tracks internal status information about a peer.
+type peer struct {
+	ID        PeerID
+	Status    PeerStatus
+	Priority  PeerPriority
+	Endpoints map[PeerAddress][]Endpoint // Resolved endpoints by address.
+}
+
+// PeerStatus specifies the status of a peer.
+type PeerStatus string
+
+const (
+	PeerStatusNew     = "new"     // New peer which we haven't tried to contact yet.
+	PeerStatusUp      = "up"      // Peer which we have an active connection to.
+	PeerStatusDown    = "down"    // Peer which we're temporarily disconnected from.
+	PeerStatusRemoved = "removed" // Peer which has been removed.
+	PeerStatusBanned  = "banned"  // Peer which is banned for misbehavior.
+)
+
+// PeerPriority specifies peer priorities.
+type PeerPriority int
+
+const (
+	PeerPriorityNormal PeerPriority = iota + 1
+	PeerPriorityValidator
+	PeerPriorityPersistent
+)
+```
+
+Peer information is stored in a `peerStore`, which may be persisted in an underlying database. It is kept internal to avoid race conditions and tight coupling. The peer store will replace the current address book, and thus track e.g. connection statistics and such.
+
+The `peerStore` should at the very least contain basic CRUD functionality as outlined below, but will possibly need to have additional functionality, and is intentionally underspecified:
+
+```go
+// peerStore contains information about peers, possibly persisted to disk.
+type peerStore struct {
+	peers map[string]*peer // Entire set in memory, with PeerID.String() keys.
+	db    dbm.DB           // Database for persistence, if non-nil.
+}
+
+func (p *peerStore) Delete(id PeerID) error     { return nil }
+func (p *peerStore) Get(id PeerID) (peer, bool) { return peer{}, false }
+func (p *peerStore) List() []peer               { return nil }
+func (p *peerStore) Set(peer peer) error        { return nil }
+```
+
 ## Status
 
 Proposed
