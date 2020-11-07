@@ -115,9 +115,9 @@ Non-networked endpoints (i.e. with no IP address) are considered local, and will
 
 #### Connections and Streams
 
-A connection represents an established transport connection between two endpoints (and thus two nodes), which can be used to exchange arbitrary raw bytes across one or more logically distinct IO streams. Connections are set up either via `Transport.Dial()` (outbound connections) or `Transport.Accept()` (inbound connections).
+A connection represents an established transport connection between two endpoints (and thus two nodes), which can be used to exchange arbitrary raw bytes across one or more logically distinct IO streams. Connections are set up either via `Transport.Dial()` (outbound connections) or `Transport.Accept()` (inbound connections). The caller is responsible for verifying the remote peer's public key as returned by the connection.
 
-The caller is responsible for verifying the remote peer's public key as given by the connection. To exchange data, an arbitrary stream ID is picked and the returned stream can be used as an IO reader or writer. Transports are free to implement streams any way they like, e.g. as distinct communication pathways or multiplexed onto one common pathway.
+To exchange data, an arbitrary stream ID is picked and the returned stream can be used as an IO reader or writer. Transports are free to choose how to implement streams, e.g. as distinct communication pathways or multiplexed onto one common pathway.
 
 `Connection` and the related `Stream` interfaces are:
 
@@ -146,16 +146,14 @@ type Connection interface {
 type StreamID uint8
 
 // Stream represents a single logical IO stream within a connection.
-//
-// NOTE: For compatibility with the existing MConn protocol, a single Write call
-// must correspond to a single logical message such that PacketMsg.EOF is set at
-// the end of the message. This requirement should be dropped when possible.
 type Stream interface {
 	io.Reader // Read([]byte) (int, error)
 	io.Writer // Write([]byte) (int, error)
 	io.Closer // Close() error
 }
 ```
+
+A note on backwards-compatibility: the current MConn protocol takes whole messages expressed as byte slices and splits them up into `PacketMsg` messages, where the final packet of a message has `PacketMsg.EOF` set. In order to maintain wire-compatibility with this protocol, the MConn transport needs to be aware of message boundaries, even though it does not care what the messages actually are. One way to handle this is to break abstraction boundaries and have the transport decode the input's length-prefixed message framing and use this to determine message boundaries. Then at some point in the future when we can break protocol compatibility we either remove the MConn protocol completely or drop the `PacketMsg.EOF` field and rely on the length-prefix framing.
 
 ## Status
 
