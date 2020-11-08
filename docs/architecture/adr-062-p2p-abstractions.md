@@ -2,7 +2,7 @@
 
 ## Changelog
 
-- 2020-11-06: Initial version (@erikgrinaker)
+- 2020-11-09: Initial version (@erikgrinaker)
 
 ## Context
 
@@ -477,16 +477,35 @@ Proposed
 
 ## Consequences
 
-> This section describes the consequences, after applying the decision. All consequences should be summarized here, not just the "positive" ones.
-
 ### Positive
+
+* Reduced coupling and simplified interfaces should lead to better understandability, increased reliability, and more testing.
+
+* Using message passing via Go channels gives better control of backpressure and quality-of-service scheduling.
+
+* Peer lifecycle and connection management is centralized in a single entity, making it easier to reason about.
+
+* Detection, advertisement, and exchange of node addresses will be improved.
+
+* Additional transports (e.g. QUIC) can be implemented and used in parallel with the existing MConn protocol.
+
+* The P2P protocol will not be broken in the initial version, if possible.
 
 ### Negative
 
+* Fully implementing the new design as indended is likely to require breaking changes to the P2P protocol at some point, although the initial implementation shouldn't.
+
+* Gradually migrating the existing stack and maintaining backwards-compatibility will be more labor-intensive than simply replacing the entire stack.
+
+* A complete overhaul of P2P internals is likely to cause temporary performance regressions and bugs as the implementation matures.
+
+* Hiding peer management information inside the `p2p` package may prevent certain functionality or require additional deliberate interfaces for information exchange, as a tradeoff to simplify the design, reduce coupling, and avoid race conditions and lock contention.
+
 ### Neutral
+
+* Implementation details around e.g. peer management, message scheduling, and peer and endpoint advertisement are not yet determined.
 
 ## References
 
-> Are there any relevant PR comments, issues that led up to this, or articles referenced for why we made the given design choice? If so link them here!
-
-- {reference link}
+* [ADR 061: P2P Refactor Scope](adr-061-p2p-refactor-scope.md)
+* [#2067: P2P Refactor](https://github.com/tendermint/tendermint/issues/2067)
