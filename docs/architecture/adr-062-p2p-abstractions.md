@@ -279,9 +279,9 @@ Since a channel can only exchange messages of a single type, it is often useful 
 
 ```go
 // Wrapper is a Protobuf message that can contain a variety of inner messages.
-// If a Channel's message type implements Wrapper, the channel will automatically
-// (un)wrap passed messages using the container type, such that the channel can
-// transparently support multiple message types.
+// If a Channel's message type implements Wrapper, the channel will
+// automatically (un)wrap passed messages using the container type, such that
+// the channel can transparently support multiple message types.
 type Wrapper interface {
     proto.Message
 
@@ -290,6 +290,68 @@ type Wrapper interface {
 
     // Unwrap will unwrap the inner message contained in this message.
 	Unwrap() (proto.Message, error)
+}
+```
+
+### Routers
+
+The router oversees all P2P networking for a node. It is responsible for keeping track of network peers, maintaining transport connections to them, and routing channel messages. As such, it must do e.g. connection retries and backoff, message QoS scheduling and backpressure, peer quality assessments, and endpoint detection and advertisement. In addition, the router provides mechanisms for reactors to receive updates about peer status changes and to report peer errors.
+
+The implementation of the router is likely to be non-trivial, and is intentionally unspecified here. A separate ADR will likely be submitted for this.
+
+The `Router` API is as follows:
+
+```go
+// Router manages connections to peers and route Protobuf messages between them
+// and local reactors. It also provides peer status updates and error reporting.
+type Router struct{}
+
+// NewRouter creates a new router, using the given peer store to track peers.
+// Transports must be pre-initialized to listen on appropriate endpoints.
+func NewRouter(peerStore *peerStore, transports map[Protocol]Transport) *Router { return nil }
+
+// Open opens a channel with an unused channel ID. messageType should be an
+// empty Protobuf message of the type that will be passed through the channel.
+// The message can implement Wrapper for automatic message (un)wrapping.
+func (r *Router) Open(id ChannelID, messageType proto.Message) (*Channel, error) { return nil, nil }
+
+// PeerErrors returns a channel that can be used to submit peer errors,
+// specifying an action to take. The sender should not close the channel.
+func (r *Router) PeerErrors() chan<- PeerError { return nil }
+
+// PeerUpdates returns a channel with peer updates. The caller must cancel the
+// context to end the subscription, and keep consuming messages in a timely
+// fashion until the channel is closed to avoid blocking updates.
+func (r *Router) PeerUpdates(ctx context.Context) <-chan PeerUpdate { return nil }
+
+// PeerErrors is a channel for submitting peer errors.
+type PeerErrors chan<- PeerError
+
+// PeerError is a peer error reported by a reactor, and an action to take.
+type PeerError struct {
+	ID     PeerID
+	Err    error
+	Action PeerAction
+}
+
+func (e PeerError) Error() string { return "" }
+
+// PeerAction is an action to take for a peer error.
+type PeerAction string
+
+const (
+	PeerActionNone       PeerAction = "none"
+	PeerActionDisconnect PeerAction = "disconnect"
+	PeerActionBan        PeerAction = "ban"
+)
+
+// PeerUpdates is a channel for receiving peer updates.
+type PeerUpdates <-chan PeerUpdate
+
+// PeerUpdate is a peer status update for reactors.
+type PeerUpdate struct {
+	ID     PeerID
+	Status PeerStatus
 }
 ```
 
