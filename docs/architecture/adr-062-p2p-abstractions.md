@@ -22,28 +22,26 @@ This ADR is primarily concerned with the architecture and interfaces of the P2P 
 
 Primary design objectives have been:
 
-* Loose coupling between components, for a simpler architecture with increased testability.
-* Better quality-of-service scheduling of messages, with backpressure and increased performance.
+* Loose coupling between components, for a simpler, more robust, and test-friendly architecture.
+* Better scheduling of messages, with improved quality-of-service, backpressure, and performance.
 * Centralized peer lifecycle and connection management.
 * Better peer address detection, advertisement, and exchange.
 * Pluggable transports (not necessarily networked).
 * Backwards compatibility with the current P2P network protocols.
 
-The main abstractions in the new stack (following [Go visibility rules](https://golang.org/ref/spec#Exported_identifiers)) are:
+The main abstractions in the new stack are:
 
-* `peer`: A node in the network, uniquely identified by a `PeerID`.
+* `peer`: A node in the network, uniquely identified by a `PeerID` and stored in a `peerStore`.
 
-* `Transport`: An arbitrary mechanism to exchange raw bytes with a peer.
+* `Transport`: An arbitrary mechanism to exchange raw bytes with a single peer using IO streams.
 
-* `Channel`: A bidirectional channel to exchange Protobuf messages with arbitrary peers, addressed by `PeerID`. There can be any number of channels, each of which can pass one specific message type.
+* `Channel`: A bidirectional channel to asynchronously exchange Protobuf messages with multiple peers, addressed by `PeerID`.
 
 * `Router`: Maintains transport connections to peers and routes channel messages.
 
-* `peerStore`: Stores peer data for the router, in memory and/or on disk.
+* Reactor: A design pattern loosely defined as "something which listens on a channel and reacts to messages". This was a first-class concept in the old P2P stack, but is now simply a design pattern and can be implemented e.g. as simply as a function.
 
-* Reactor: While this was a first-class concept in the old P2P stack, it is simply a design pattern in the new design, loosely defined as "something which listens on a channel and reacts to messages" (e.g. as simple as a function).
-
-These concepts and related entities are described in detail below, in a bottom-up order.
+These concepts and related entities are described in detail below, in a bottom-up fashion.
 
 ### Transports
 
@@ -160,17 +158,17 @@ A note on backwards-compatibility: the current MConn protocol takes whole messag
 Peers are remote nodes that we wish to communicate with. Each peer is identified by a unique binary `PeerID`, and has a set of `PeerAddress` addresses expressed as URLs that they can be reached via. Addresses are resolved into one or more transport endpoints, e.g. by resolving DNS hostnames into IP addresses (which should be refreshed periodically). Peers should always be expressed as address URLs, never as endpoints (which are a lower-level construct).
 
 ```go
-// PeerID is a unique peer ID, generally used in hex form.
+// PeerID is a unique peer ID, generally expressed in hex form.
 type PeerID []byte
 
 // PeerAddress is a peer address URL. The User field, if set, gives the
-// hex-encoded remove PeerID, which should be verified with the remote peer's
+// hex-encoded remote PeerID, which should be verified with the remote peer's
 // public key as returned by the connection.
 type PeerAddress url.URL
 
 // Resolve resolves a PeerAddress into a set of Endpoints, typically by
-// expanding out any DNS names given in URL.Host to IP addresses. Fields are
-// mapped as follows:
+// expanding out any DNS names given in Host to IP addresses. Fields are mapped
+// as follows:
 //
 //   Scheme → Endpoint.Protocol
 //   Host   → Endpoint.IP
@@ -229,6 +227,70 @@ func (p *peerStore) Delete(id PeerID) error     { return nil }
 func (p *peerStore) Get(id PeerID) (peer, bool) { return peer{}, false }
 func (p *peerStore) List() []peer               { return nil }
 func (p *peerStore) Set(peer peer) error        { return nil }
+```
+
+### Channels
+
+While low-level data exchange with individual peers happens via transport IO streams, the high-level API is based on a bidirectional `Channel` that can send and receive Protobuf messages addressed by `PeerID`. A channel is identified by an arbitrary `ChannelID` identifier (generally identical to the underlying `StreamID`), and can exchange Protobuf messages of one specific type (since the type to unmarshal into must be known). Message delivery is asynchronous and at-most-once.
+
+A `Channel` has this interface:
+
+```go
+// ChannelID is an arbitrary channel ID, and maps directly onto a transport
+// stream ID against each individual peer.
+type ChannelID StreamID
+
+// Envelope specifies the message receiver and sender.
+type Envelope struct {
+	From      PeerID        // Message sender, or empty for outbound messages.
+	To        PeerID        // Message receiver, or empty for inbound messages.
+	Broadcast bool          // Send message to all connected peers, ignoring To.
+	Message   proto.Message // Payload.
+}
+
+// Channel is a bidirectional channel for Protobuf message exchange with peers.
+type Channel struct {
+	// ID contains the channel ID.
+    ID ChannelID
+
+    // messageType specifies the type of messages exchanged via the channel, and
+    // is used e.g. for automatic unmarshaling.
+    messageType proto.Message
+
+	// In is a channel for receiving inbound messages. Envelope.From is always
+	// set.
+	In <-chan Envelope
+
+    // Out is a channel for sending outbound messages. Envelope.To or Broadcast
+    // must be set, otherwise the message is discarded.
+	Out chan<- Envelope
+}
+
+// Close closes the channel, and is equivalent to close(Channel.Out). This will
+// cause Channel.In to be closed when appropriate. The ID can then be reused.
+func (c *Channel) Close() error { return nil }
+```
+
+A channel can reach any connected peer, and is implemented using transport streams against individual peers. The channel will automatically (un)marshal Protobuf to byte slices and use length-prefixed framing (a de facto standard for Protobuf streams) when writing them to the stream.
+
+Message scheduling and queueing is left as an implementation detail, and can use any number of algorithms such as FIFO, round-robin, priority queues, etc. Since message delivery is not guaranteed, both inbound and outbound messages may be dropped, buffered, or blocked as appropriate.
+
+Since a channel can only exchange messages of a single type, it is often useful to use a wrapper message type with e.g. a Protobuf `oneof` field that specifies a set of inner message types that it can contain. The channel can automatically perform this (un)wrapping if the outer message type implements `Wrapper` (see Reactors for an example):
+
+```go
+// Wrapper is a Protobuf message that can contain a variety of inner messages.
+// If a Channel's message type implements Wrapper, the channel will automatically
+// (un)wrap passed messages using the container type, such that the channel can
+// transparently support multiple message types.
+type Wrapper interface {
+    proto.Message
+
+    // Wrap will take a message and wrap it in this one.
+    Wrap(proto.Message) error
+
+    // Unwrap will unwrap the inner message contained in this message.
+	Unwrap() (proto.Message, error)
+}
 ```
 
 ## Status
