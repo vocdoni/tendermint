@@ -62,17 +62,17 @@ The `Transport` interface is:
 ```go
 // Transport is an arbitrary mechanism for exchanging bytes with a peer.
 type Transport interface {
-	// Accept waits for the next inbound connection, or until the context is
-	// cancelled.
-	Accept(context.Context) (Connection, error)
+    // Accept waits for the next inbound connection, or until the context is
+    // cancelled.
+    Accept(context.Context) (Connection, error)
 
-	// Dial creates an outbound connection to an endpoint.
-	Dial(context.Context, Endpoint) (Connection, error)
+    // Dial creates an outbound connection to an endpoint.
+    Dial(context.Context, Endpoint) (Connection, error)
 
     // Endpoints lists endpoints the transport is listening on. Any endpoint IP
     // addresses do not need to be normalized in any way (e.g. 0.0.0.0 is
     // valid), as they will be preprocessed before being advertised.
-	Endpoints() []Endpoint
+    Endpoints() []Endpoint
 }
 ```
 
@@ -89,18 +89,18 @@ The `Endpoint` struct and related types is:
 type Endpoint struct {
     // Protocol specifies the transport protocol, used by the router to pick a
     // transport for an endpoint.
-	Protocol Protocol
+    Protocol Protocol
 
-	// Path is an optional, arbitrary transport-specific path or identifier.
-	Path string
+    // Path is an optional, arbitrary transport-specific path or identifier.
+    Path string
 
-	// IP is an IP address (v4 or v6) to connect to. If set, this defines the
+    // IP is an IP address (v4 or v6) to connect to. If set, this defines the
     // endpoint as a networked endpoint.
-	IP net.IP
+    IP net.IP
 
     // Port is a network port (either TCP or UDP). If not set, a default port
     // may be used depending on the protocol.
-	Port uint16
+    Port uint16
 }
 
 // Protocol identifies a transport protocol.
@@ -125,19 +125,19 @@ type Connection interface {
     // Stream returns a logically distinct IO stream within the connection,
     // using an arbitrary stream ID. Multiple calls with the same ID return the
     // same stream.
-	Stream(StreamID) Stream
+    Stream(StreamID) Stream
 
-	// LocalEndpoint returns the local endpoint for the connection.
-	LocalEndpoint() Endpoint
+    // LocalEndpoint returns the local endpoint for the connection.
+    LocalEndpoint() Endpoint
 
-	// RemoteEndpoint returns the remote endpoint for the connection.
-	RemoteEndpoint() Endpoint
+    // RemoteEndpoint returns the remote endpoint for the connection.
+    RemoteEndpoint() Endpoint
 
-	// PubKey returns the public key of the remote peer.
-	PubKey() crypto.PubKey
+    // PubKey returns the public key of the remote peer.
+    PubKey() crypto.PubKey
 
-	// Close closes the connection.
-	Close() error
+    // Close closes the connection.
+    Close() error
 }
 
 // StreamID is an arbitrary stream ID.
@@ -145,9 +145,9 @@ type StreamID uint8
 
 // Stream represents a single logical IO stream within a connection.
 type Stream interface {
-	io.Reader // Read([]byte) (int, error)
-	io.Writer // Write([]byte) (int, error)
-	io.Closer // Close() error
+    io.Reader // Read([]byte) (int, error)
+    io.Writer // Write([]byte) (int, error)
+    io.Closer // Close() error
 }
 ```
 
@@ -185,30 +185,30 @@ The `peer` struct might look like the below, but is intentionally underspecified
 ```go
 // peer tracks internal status information about a peer.
 type peer struct {
-	ID        PeerID
-	Status    PeerStatus
-	Priority  PeerPriority
-	Endpoints map[PeerAddress][]Endpoint // Resolved endpoints by address.
+    ID        PeerID
+    Status    PeerStatus
+    Priority  PeerPriority
+    Endpoints map[PeerAddress][]Endpoint // Resolved endpoints by address.
 }
 
 // PeerStatus specifies the status of a peer.
 type PeerStatus string
 
 const (
-	PeerStatusNew     = "new"     // New peer which we haven't tried to contact yet.
-	PeerStatusUp      = "up"      // Peer which we have an active connection to.
-	PeerStatusDown    = "down"    // Peer which we're temporarily disconnected from.
-	PeerStatusRemoved = "removed" // Peer which has been removed.
-	PeerStatusBanned  = "banned"  // Peer which is banned for misbehavior.
+    PeerStatusNew     = "new"     // New peer which we haven't tried to contact yet.
+    PeerStatusUp      = "up"      // Peer which we have an active connection to.
+    PeerStatusDown    = "down"    // Peer which we're temporarily disconnected from.
+    PeerStatusRemoved = "removed" // Peer which has been removed.
+    PeerStatusBanned  = "banned"  // Peer which is banned for misbehavior.
 )
 
 // PeerPriority specifies peer priorities.
 type PeerPriority int
 
 const (
-	PeerPriorityNormal PeerPriority = iota + 1
-	PeerPriorityValidator
-	PeerPriorityPersistent
+    PeerPriorityNormal PeerPriority = iota + 1
+    PeerPriorityValidator
+    PeerPriorityPersistent
 )
 ```
 
@@ -219,8 +219,8 @@ The `peerStore` should at the very least contain basic CRUD functionality as out
 ```go
 // peerStore contains information about peers, possibly persisted to disk.
 type peerStore struct {
-	peers map[string]*peer // Entire set in memory, with PeerID.String() keys.
-	db    dbm.DB           // Database for persistence, if non-nil.
+    peers map[string]*peer // Entire set in memory, with PeerID.String() keys.
+    db    dbm.DB           // Database for persistence, if non-nil.
 }
 
 func (p *peerStore) Delete(id PeerID) error     { return nil }
@@ -242,28 +242,28 @@ type ChannelID StreamID
 
 // Envelope specifies the message receiver and sender.
 type Envelope struct {
-	From      PeerID        // Message sender, or empty for outbound messages.
-	To        PeerID        // Message receiver, or empty for inbound messages.
-	Broadcast bool          // Send message to all connected peers, ignoring To.
-	Message   proto.Message // Payload.
+    From      PeerID        // Message sender, or empty for outbound messages.
+    To        PeerID        // Message receiver, or empty for inbound messages.
+    Broadcast bool          // Send message to all connected peers, ignoring To.
+    Message   proto.Message // Payload.
 }
 
 // Channel is a bidirectional channel for Protobuf message exchange with peers.
 type Channel struct {
-	// ID contains the channel ID.
+    // ID contains the channel ID.
     ID ChannelID
 
     // messageType specifies the type of messages exchanged via the channel, and
     // is used e.g. for automatic unmarshaling.
     messageType proto.Message
 
-	// In is a channel for receiving inbound messages. Envelope.From is always
-	// set.
-	In <-chan Envelope
+    // In is a channel for receiving inbound messages. Envelope.From is always
+    // set.
+    In <-chan Envelope
 
     // Out is a channel for sending outbound messages. Envelope.To or Broadcast
     // must be set, otherwise the message is discarded.
-	Out chan<- Envelope
+    Out chan<- Envelope
 }
 
 // Close closes the channel, and is equivalent to close(Channel.Out). This will
@@ -289,7 +289,7 @@ type Wrapper interface {
     Wrap(proto.Message) error
 
     // Unwrap will unwrap the inner message contained in this message.
-	Unwrap() (proto.Message, error)
+    Unwrap() (proto.Message, error)
 }
 ```
 
@@ -329,9 +329,9 @@ type PeerErrors chan<- PeerError
 
 // PeerError is a peer error reported by a reactor, and an action to take.
 type PeerError struct {
-	ID     PeerID
-	Err    error
-	Action PeerAction
+    ID     PeerID
+    Err    error
+    Action PeerAction
 }
 
 func (e PeerError) Error() string { return "" }
@@ -340,9 +340,9 @@ func (e PeerError) Error() string { return "" }
 type PeerAction string
 
 const (
-	PeerActionNone       PeerAction = "none"
-	PeerActionDisconnect PeerAction = "disconnect"
-	PeerActionBan        PeerAction = "ban"
+    PeerActionNone       PeerAction = "none"
+    PeerActionDisconnect PeerAction = "disconnect"
+    PeerActionBan        PeerAction = "ban"
 )
 
 // PeerUpdates is a channel for receiving peer updates.
@@ -350,8 +350,124 @@ type PeerUpdates <-chan PeerUpdate
 
 // PeerUpdate is a peer status update for reactors.
 type PeerUpdate struct {
-	ID     PeerID
-	Status PeerStatus
+    ID     PeerID
+    Status PeerStatus
+}
+```
+
+### Reactor Example
+
+While reactors are a first-class concept in the current P2P stack (i.e. there is an explicit `p2p.Reactor` interface), they will simply be a design pattern in the new stack - loosely defined as "something which listens on a channel and reacts to messages".
+
+Below is an example of a simple echo reactor implemented as a function. The reactor will exchange the following Protobuf messages:
+
+```protobuf
+message EchoMessage {
+    oneof inner {
+        PingMessage ping = 1;
+        PongMessage pong = 2;
+    }
+}
+
+message PingMessage {
+    string content = 1;
+}
+
+message PongMessage {
+    string content = 1;
+}
+```
+
+And would be implemented e.g. like this:
+
+```go
+// Wrap implements Wrapper, enabling automatic message (un)wrapping.
+func (m *EchoMessage) Wrap(inner proto.Message) error {
+    switch inner := inner.(type) {
+    case *PingMessage:
+        m.Inner = &EchoMessage_PingMessage{PingMessage: inner}
+    case *PongMessage:
+        m.Inner = &EchoMessage_PongMessage{PongMessage: inner}
+    default:
+        return fmt.Errorf("unknown message %T", inner)
+    }
+    return nil
+}
+
+// Unwrap implements Wrapper, enabling automatic message (un)wrapping.
+func (m *EchoMessage) Unwrap() (proto.Message, error) {
+    switch inner := m.Inner.(type) {
+    case *EchoMessage_PingMessage:
+        return inner.PingMessage, nil
+    case *EchoMessage_PongMessage:
+        return inner.PongMessage, nil
+    default:
+        return nil, fmt.Errorf("unknown message %T", inner)
+    }
+}
+
+// EchoReactor provides an echo service, pinging all known peers until cancelled.
+func EchoReactor(
+    ctx context.Context,
+    channel *p2p.Channel,
+    peerUpdates p2p.PeerUpdates,
+    peerErrors p2p.PeerErrors,
+) error {
+    ticker := time.NewTicker(5 * time.Second)
+    defer ticker.Stop()
+
+    for {
+        select {
+        // Send ping message to all known peers every 5 seconds.
+        case <-ticker.C:
+            channel.Out <- Envelope{
+                Broadcast: true,
+                Message:   &PingMessage{Content: "👋"},
+            }
+
+        // When we receive a message from a peer, either respond to ping, output
+        // pong, or disconnect peer on unknown message type.
+        case envelope := <-channel.In:
+            switch msg := envelope.Message.(type) {
+            case *PingMessage:
+                channel.Out <- Envelope{
+                    To:      envelope.From,
+                    Message: &PongMessage{Content: msg.Content},
+                }
+
+            case *PongMessage:
+                fmt.Printf("%q replied with %q\n", envelope.From, msg.Content)
+
+            default:
+                peerErrors <- PeerError{
+                    ID:     envelope.From,
+                    Err:    fmt.Errorf("unexpected message %T", msg),
+                    Action: PeerActionDisconnect,
+                }
+            }
+
+        // Output info about any peer status changes.
+        case peerUpdate := <-peerUpdates:
+            fmt.Printf("Peer %q changed status to %q", peerUpdate.ID, peerUpdate.Status)
+
+        // Exit when context is cancelled.
+        case <-ctx.Done():
+            return nil
+        }
+    }
+}
+
+// RunEchoReactor wires up a reactor to a router and runs it.
+func RunEchoReactor(router *p2p.Router) error {
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
+    channel, err := router.Open(1, &EchoMessage{})
+    if err != nil {
+        return err
+    }
+
+    return EchoReactor(ctx, channel, router.PeerUpdates(ctx), router.PeerErrors())
 }
 ```
 
