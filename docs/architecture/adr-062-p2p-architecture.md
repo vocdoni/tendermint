@@ -41,7 +41,7 @@ The main abstractions in the new stack are:
 
 These abstractions and related concepts are illustrated in the following diagram and described in detail below.
 
-![P2P Architecture Diagram](img/adr-062-p2p-architecture.svg)
+![P2P Architecture Diagram](img/adr-062-p2p-a.svg)
 
 ### Transports
 
