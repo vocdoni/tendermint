@@ -39,7 +39,9 @@ The main abstractions in the new stack are:
 * `Router`: Maintains transport connections to relevant peers and routes channel messages.
 * Reactor: A design pattern loosely defined as "something which listens on a channel and reacts to messages".
 
-These abstractions and related concepts are described in detail below.
+These abstractions and related concepts are illustrated in the following diagram and described in detail below.
+
+![P2P Architecture Diagram](img/adr-062-p2p-architecture.svg)
 
 ### Transports
 
