@@ -43,7 +43,7 @@ These abstractions and related concepts are described in detail below.
 
 ### Transports
 
-Transports are arbitrary mechanisms for exchanging raw bytes with a peer. For example, a gRPC transport would connect to a peer over TCP/IP and send data using the gRPC protocol, while an in-memory transport might communicate with a peer running in another goroutine using internal byte buffers. Note that transports don't have a notion of a `peer` as such - instead, they communicate with arbitrary endpoint addresses, to decouple them from the rest of the P2P stack.
+Transports are arbitrary mechanisms for exchanging raw bytes with a peer. For example, a gRPC transport would connect to a peer over TCP/IP and send data using the gRPC protocol, while an in-memory transport might communicate with a peer running in another goroutine using internal byte buffers. Note that transports don't have a notion of a `peer` as such - instead, they communicate with arbitrary endpoint addresses (e.g. IP address and port number), to decouple them from the rest of the P2P stack.
 
 Transports must satisfy the following requirements:
 
@@ -53,14 +53,14 @@ Transports must satisfy the following requirements:
 
 * Provide the public key of the peer, and possibly encrypt or sign the traffic as appropriate. This should be compared with known data (e.g. the peer ID) to authenticate the peer and avoid man-in-the-middle attacks.
 
-The initial transport implementation will be a port of the current MConn protocol currently used by Tendermint, and should be backwards-compatible at the wire level.
+The initial transport implementation will be a port of the current MConn protocol currently used by Tendermint, and should be backwards-compatible at the wire level. This will be followed by an in-memory transport for testing, and a QUIC transport that may eventually replace MConn.
 
 The `Transport` interface is:
 
 ```go
 // Transport is an arbitrary mechanism for exchanging bytes with a peer.
 type Transport interface {
-    // Accept waits for the next inbound connection.
+    // Accept waits for the next inbound connection in a listening endpoint.
     Accept(context.Context) (Connection, error)
 
     // Dial creates an outbound connection to an endpoint.
@@ -77,7 +77,7 @@ How the transport configures listening is transport-dependent, and not covered b
 
 #### Endpoints
 
-`Endpoint` represents a transport endpoint. A connection always has two endpoints: one at the local node and one at the remote peer. An outbound connection to a remote endpoint is made via a `Dial()` call, and inbound connections to listening endpoints are returned via `Accept()`.
+`Endpoint` represents a transport endpoint (e.g. an IP address and port). A connection always has two endpoints: one at the local node and one at the remote peer. An outbound connection to a remote endpoint is made via a `Dial()` call, and inbound connections to listening endpoints are returned via `Accept()`.
 
 The `Endpoint` struct is:
 
@@ -104,7 +104,7 @@ type Endpoint struct {
 type Protocol string
 ```
 
-Endpoints are arbitrary transport-specific addresses, but if they are networked they must use IP addresses, and thus rely on IP as a fundamental packet routing protocol. This enables policies for address discovery, advertisement, and exchange - for example, a private `192.168.0.0/24` IP address should only be advertised to peers on that IP network, while the public address `8.8.8.8` may be advertised to all peers. Similarly, any port numbers if given must represent TCP and/or UDP port numbers, in order to use [UPnP](https://en.wikipedia.org/wiki/Universal_Plug_and_Play) to autoconfigure e.g. NAT gateways.
+Endpoints are arbitrary transport-specific addresses, but if they are networked they must use IP addresses and thus rely on IP as a fundamental packet routing protocol. This enables policies for address discovery, advertisement, and exchange - for example, a private `192.168.0.0/24` IP address should only be advertised to peers on that IP network, while the public address `8.8.8.8` may be advertised to all peers. Similarly, any port numbers if given must represent TCP and/or UDP port numbers, in order to use [UPnP](https://en.wikipedia.org/wiki/Universal_Plug_and_Play) to autoconfigure e.g. NAT gateways.
 
 Non-networked endpoints (without an IP address) are considered local, and will only be advertised to other peers connecting via the same protocol. For example, an in-memory transport might use `Endpoint{Protocol: "memory", Path: "foo"}` as an address for the node "foo", and this should only be advertised to other nodes using `Protocol: "memory"`.
 
@@ -148,11 +148,9 @@ type Stream interface {
 }
 ```
 
-A note on backwards-compatibility: the current MConn protocol takes whole messages expressed as byte slices and splits them up into `PacketMsg` messages, where the final packet of a message has `PacketMsg.EOF` set. In order to maintain wire-compatibility with this protocol, the MConn transport needs to be aware of message boundaries, even though it does not care what the messages actually are. One way to handle this is to break abstraction boundaries and have the transport decode the input's length-prefixed message framing and use this to determine message boundaries. Then at some point in the future when we can break protocol compatibility we either remove the MConn protocol completely or drop the `PacketMsg.EOF` field and rely on the length-prefix framing.
-
 ### Peers
 
-Peers are remote network nodes. Each peer is identified by a unique binary `PeerID`, and has a set of `PeerAddress` addresses expressed as URLs that they can be reached via. Addresses are resolved into one or more transport endpoints, e.g. by resolving DNS hostnames into IP addresses (which should be refreshed periodically). Peers should always be expressed as address URLs, and never as endpoints which are a lower-level construct.
+Peers are remote network nodes. Each peer is identified by a unique `PeerID`, and has a set of `PeerAddress` addresses expressed as URLs that they can be reached at. Addresses are resolved into one or more transport endpoints, e.g. by resolving DNS hostnames into IP addresses (which should be refreshed periodically). Peers should always be expressed as address URLs, and never as endpoints which are a lower-level construct.
 
 ```go
 // PeerID is a unique peer ID, generally expressed in hex form.
@@ -266,11 +264,11 @@ type Envelope struct {
 }
 ```
 
-A channel can reach any connected peer, and is implemented using transport streams against each individual peers (with `StreamID` equal to `ChannelID`). The channel will automatically (un)marshal Protobuf to byte slices and use length-prefixed framing (the de facto standard for Protobuf streams) when writing them to the stream.
+A channel can reach any connected peer, and is implemented using transport streams against each individual peer (with `StreamID` equal to `ChannelID`). The channel will automatically (un)marshal Protobuf to byte slices and use length-prefixed framing (the de facto standard for Protobuf streams) when writing them to the stream.
 
 Message scheduling and queueing is left as an implementation detail, and can use any number of algorithms such as FIFO, round-robin, priority queues, etc. Since message delivery is not guaranteed, both inbound and outbound messages may be dropped, buffered, or blocked as appropriate.
 
-Since a channel can only exchange messages of a single type, it is often useful to use a wrapper message type with e.g. a Protobuf `oneof` field that specifies a set of inner message types that it can contain. The channel can automatically perform this (un)wrapping if the outer message type implements the `Wrapper` interface (see Reactors for an example):
+Since a channel can only exchange messages of a single type, it is often useful to use a wrapper message type with e.g. a Protobuf `oneof` field that specifies a set of inner message types that it can contain. The channel can automatically perform this (un)wrapping if the outer message type implements the `Wrapper` interface (see [Reactor Example](#reactor-example) for an example):
 
 ```go
 // Wrapper is a Protobuf message that can contain a variety of inner messages.
@@ -290,7 +288,7 @@ type Wrapper interface {
 
 ### Routers
 
-The router oversees all P2P networking for a node. It is responsible for keeping track of network peers, maintaining transport connections, and routing channel messages. As such, it must do e.g. connection retries and backoff, message QoS scheduling and backpressure, peer quality assessments, and endpoint detection and advertisement. In addition, the router provides mechanisms for reactors to receive updates about peer status changes and to report peer errors (which can optionally cause the peers to be disconnected or banned).
+The router manages all P2P networking for a node, and is responsible for keeping track of network peers, maintaining transport connections, and routing channel messages. As such, it must do e.g. connection retries and backoff, message QoS scheduling and backpressure, peer quality assessments, and endpoint detection and advertisement. In addition, the router provides mechanisms for reactors to receive updates about peer status changes and to report peer errors (which can optionally cause the peers to be disconnected or banned).
 
 The implementation of the router is likely to be non-trivial, and is intentionally unspecified here. A separate ADR will likely be submitted for this.
 
@@ -299,10 +297,7 @@ The `Router` API is as follows:
 ```go
 // Router manages connections to peers and routes Protobuf messages between them
 // and local reactors. It also provides peer status updates and error reporting.
-type Router struct{
-    peerStore  *peerStore
-    transports map[Protocol]Transport
-}
+type Router struct{}
 
 // NewRouter creates a new router, using the given peer store to track peers.
 // Transports must be pre-initialized to listen on appropriate endpoints.
@@ -474,11 +469,11 @@ func EchoReactor(
 
 ### Implementation Plan
 
-The existing P2P stack should be gradually migrated towards this design. The simplest order would likely be:
+The existing P2P stack should be gradually migrated towards this design. The easiest path would likely be:
 
 1. Port the `privval` package to no longer use `SecretConnection` (e.g. by using gRPC instead), or temporarily duplicate its functionality.
 
-2. Migrate the current `p2p` connection and transport code to use the new `Transport` API, and migrate existing code to use it instead.
+2. Rewrite the current MConn connection and transport code to use the new `Transport` API, and migrate existing code to use it instead.
 
 3. Implement the `Channel`, `PeerUpdates`, and `PeerErrors` APIs as shims on top of the current `Switch` and `Peer` APIs, and rewrite all reactors to use them instead.
 
@@ -487,6 +482,8 @@ The existing P2P stack should be gradually migrated towards this design. The sim
 5. Replace the existing `Switch` abstraction with the new `Router`.
 
 6. Consider rewriting and/or cleaning up reactors and other P2P-related code to make better use of the new abstractions.
+
+ A note on backwards-compatibility: the current MConn protocol takes whole messages expressed as byte slices and splits them up into `PacketMsg` messages, where the final packet of a message has `PacketMsg.EOF` set. In order to maintain wire-compatibility with this protocol, the MConn transport needs to be aware of message boundaries, even though it does not care what the messages actually are. One way to handle this is to break abstraction boundaries and have the transport decode the input's length-prefixed message framing and use this to determine message boundaries. Then at some point in the future when we can break protocol compatibility we either remove the MConn protocol completely or drop the `PacketMsg.EOF` field and rely on the length-prefix framing.
 
 ## Status
 
