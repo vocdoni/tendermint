@@ -1,4 +1,4 @@
-# ADR 062: P2P Abstractions
+# ADR 062: P2P Architecture and Abstractions
 
 ## Changelog
 
@@ -6,42 +6,40 @@
 
 ## Context
 
-In [ADR 061](adr-061-p2p-refactor-scope.md) we decided to refactor the peer-to-peer (P2P) networking stack. The first phase of this is to redesign and refactor the internal P2P architecture and implementation, while retaining protocol compatibility as far as possible.
+In [ADR 061](adr-061-p2p-refactor-scope.md) we decided to refactor the peer-to-peer (P2P) networking stack. The first phase is to redesign and refactor the internal P2P architecture, while retaining protocol compatibility as far as possible.
 
 ## Alternative Approaches
 
-> This section contains information around alternative options that are considered before making a decision. It should contain a explanation on why the alternative approach(es) were not chosen.
+Several variations of the proposed design were considered, including e.g. calling interface methods instead of passing messages (like the current architecture), merging channels with streams, exposing the internal peer data structure to reactors, being message format-agnostic via arbitrary codecs, and so on. The final design was chosen because it has very loose coupling, is simpler to reason about, avoids race conditions and lock contention for internal data structures, gives reactors better control of message ordering and processing semantics, and allows for QoS scheduling and backpressure in a very natural way.
+
+There were also proposals to use LibP2P instead of maintaining our own P2P stack, which was rejected (for now) in [ADR 061](adr-061-p2p-refactor-scope.md).
 
 ## Decision
 
-The P2P stack will be redesigned as a message-oriented architecture, primarily relying on Go channels for communication and scheduling. It will use arbitrary stream transports to communicate with peers, peer-addressable channels to pass Protobuf messages between peers, and a router that routes messages between reactors and peers. Message passing is asynchronous with at-most-once delivery.
+The P2P stack will be redesigned as a message-oriented architecture, primarily relying on Go channels for communication and scheduling. It will use IO stream transports to exchange raw bytes with individual peers, bidirectional peer-addressable channels to send and receive Protobuf messages, and a router to route messages between reactors and peers. Message passing is asynchronous with at-most-once delivery.
 
 ## Detailed Design
 
-This ADR is primarily concerned with the architecture and interfaces of the P2P stack, not their internal implementation details. Since implementations can be non-trivial, separate ADRs may be submitted for these. The APIs described here should therefore be considered a rough architecture outline, not a complete and final design.
+This ADR is primarily concerned with the architecture and interfaces of the P2P stack, not implementation details. Separate ADRs may be submitted for individual components, since implementation may be non-trivial. The interfaces described here should therefore be considered a rough architecture outline, not a complete and final design.
 
 Primary design objectives have been:
 
 * Loose coupling between components, for a simpler, more robust, and test-friendly architecture.
-* Better scheduling of messages, with improved quality-of-service, backpressure, and performance.
+* Pluggable transports (not necessarily networked).
+* Better scheduling of messages, with improved prioritization, backpressure, and performance.
 * Centralized peer lifecycle and connection management.
 * Better peer address detection, advertisement, and exchange.
-* Pluggable transports (not necessarily networked).
 * Backwards compatibility with the current P2P network protocols.
 
 The main abstractions in the new stack are:
 
 * `peer`: A node in the network, uniquely identified by a `PeerID` and stored in a `peerStore`.
-
 * `Transport`: An arbitrary mechanism to exchange raw bytes with a single peer using IO streams.
+* `Channel`: A bidirectional channel to asynchronously exchange Protobuf messages with peers, addressed by `PeerID`.
+* `Router`: Maintains transport connections to peers and routes channel messages across them.
+* Reactor: A design pattern loosely defined as "something which listens on a channel and reacts to messages".
 
-* `Channel`: A bidirectional channel to asynchronously exchange Protobuf messages with multiple peers, addressed by `PeerID`.
-
-* `Router`: Maintains transport connections to peers and routes channel messages.
-
-* Reactor: A design pattern loosely defined as "something which listens on a channel and reacts to messages". This was a first-class concept in the old P2P stack, but is now simply a design pattern and can be implemented e.g. as simply as a function.
-
-These concepts and related entities are described in detail below, in a bottom-up fashion.
+These abstractions and related concepts are described below.
 
 ### Transports
 
