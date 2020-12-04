@@ -7,6 +7,7 @@ import (
 	clist "github.com/tendermint/tendermint/libs/clist"
 	"github.com/tendermint/tendermint/libs/log"
 	"github.com/tendermint/tendermint/libs/service"
+	tmsync "github.com/tendermint/tendermint/libs/sync"
 	"github.com/tendermint/tendermint/p2p"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
 	"github.com/tendermint/tendermint/types"
@@ -56,20 +57,34 @@ type Reactor struct {
 	evidenceChDone  chan bool
 	peerUpdates     p2p.PeerUpdates
 	peerUpdatesDone chan bool
+
+	mtx          tmsync.RWMutex
+	peerRoutines map[string]chan struct{}
 }
 
 // NewReactor returns a new Reactor with the given config and evpool.
-func NewReactor(logger log.Logger, evidenceCh *p2p.Channel, peerUpdates p2p.PeerUpdates, evpool *Pool) *Reactor {
+func NewReactor(
+	logger log.Logger,
+	evidenceCh *p2p.Channel,
+	peerUpdates p2p.PeerUpdates,
+	evpool *Pool,
+) *Reactor {
 	r := &Reactor{
 		evpool:          evpool,
 		evidenceCh:      evidenceCh,
 		evidenceChDone:  make(chan bool),
 		peerUpdates:     peerUpdates,
 		peerUpdatesDone: make(chan bool),
+		peerRoutines:    make(map[string]chan struct{}),
 	}
 
 	r.BaseService = *service.NewBaseService(logger, "Evidence", r)
 	return r
+}
+
+// SetEventBus implements events.Eventable.
+func (r *Reactor) SetEventBus(b *types.EventBus) {
+	r.eventBus = b
 }
 
 // OnStart starts separate go routines for each p2p Channel and listens for
@@ -95,29 +110,6 @@ func (r *Reactor) OnStop() {
 	if err := r.evidenceCh.Close(); err != nil {
 		panic(fmt.Sprintf("failed to close evidence channel: %s", err))
 	}
-}
-
-func (r *Reactor) processPeerUpdates() {
-	for {
-		select {
-		case peerUpdate := <-r.peerUpdates:
-			r.Logger.Debug("peer update", "peer", peerUpdate.PeerID.String())
-
-			switch peerUpdate.Status {
-			case p2p.PeerStatusNew, p2p.PeerStatusUp:
-				go r.broadcastEvidenceRoutine(peerUpdate.PeerID)
-			}
-
-		case <-r.peerUpdatesDone:
-			r.Logger.Debug("stopped listening on peer updates channel")
-			return
-		}
-	}
-}
-
-// SetEventBus implements events.Eventable.
-func (r *Reactor) SetEventBus(b *types.EventBus) {
-	r.eventBus = b
 }
 
 // processEvidenceCh implements a blocking event loop where we listen for p2p
@@ -172,16 +164,56 @@ func (r *Reactor) processEvidenceCh() {
 	}
 }
 
-// Modeled after the mempool routine.
-// - Evidence accumulates in a clist.
-// - Each peer has a routine that iterates through the clist, sending available
-//   evidence to the peer.
-// - If we're waiting for new evidence and the list is not empty, we start
-//   iterating from the beginning again.
-//
-// TODO: We need to handle peer stopping, otherwise, per peer, we can create
-// multiple goroutines.
-func (r *Reactor) broadcastEvidenceRoutine(peerID p2p.PeerID) {
+// processPeerUpdates starts a blocking process where we listen for peer updates.
+// For each peer update of status PeerStatusNew or PeerStatusUp, we spawn a
+// evidence broadcasting goroutine if one hasn't already been spawned. For each
+// peer update of status PeerStatusDown, PeerStatusRemoved, or PeerStatusBanned
+// we mark the broadcasting goroutine as done if it exists.
+func (r *Reactor) processPeerUpdates() {
+	for {
+		select {
+		case peerUpdate := <-r.peerUpdates:
+			r.Logger.Debug("peer update", "peer", peerUpdate.PeerID.String())
+
+			switch peerUpdate.Status {
+			case p2p.PeerStatusNew, p2p.PeerStatusUp:
+				r.mtx.Lock()
+
+				// Check if we've already started a goroutine for this PeerID, if not
+				// create a new done channel, update the peerRoutines, and start the
+				// goroutine to broadcast evidence to that peer.
+				_, ok := r.peerRoutines[peerUpdate.PeerID.String()]
+				if !ok {
+					doneCh := make(chan struct{})
+					r.peerRoutines[peerUpdate.PeerID.String()] = doneCh
+					go r.broadcastEvidenceLoop(peerUpdate.PeerID, doneCh)
+				}
+
+				r.mtx.Unlock()
+
+			case p2p.PeerStatusDown, p2p.PeerStatusRemoved, p2p.PeerStatusBanned:
+				r.mtx.Lock()
+
+				doneCh, ok := r.peerRoutines[peerUpdate.PeerID.String()]
+				if ok {
+					close(doneCh)
+					delete(r.peerRoutines, peerUpdate.PeerID.String())
+				}
+
+				r.mtx.Unlock()
+			}
+
+		case <-r.peerUpdatesDone:
+			r.Logger.Debug("stopped listening on peer updates channel")
+			return
+		}
+	}
+}
+
+// broadcastEvidenceLoop starts a blocking process that continuously reads
+// evidence objects off of a linked-list and sends the evidence to the given
+// peer. It is modeled after the mempool routine.
+func (r *Reactor) broadcastEvidenceLoop(peerID p2p.PeerID, done <-chan struct{}) {
 	var next *clist.CElement
 	for {
 		// This happens because the CElement we were looking at got garbage
@@ -194,19 +226,37 @@ func (r *Reactor) broadcastEvidenceRoutine(peerID p2p.PeerID) {
 					continue
 				}
 
+			case <-done:
+				// We can safely exit the goroutine once the peer is marked as removed
+				// by processPeerUpdates closing the done channel.
+				return
+
 			case <-r.Quit():
 				// we can safely exit the goroutine once the reactor stops
 				return
 			}
 		}
 
-		if ev, ok := next.Value.(types.Evidence); ok {
-			evProto, err := types.EvidenceToProto(ev)
-			if err != nil {
-				panic(err)
-			}
+		ev := next.Value.(types.Evidence)
+		evProto, err := types.EvidenceToProto(ev)
+		if err != nil {
+			panic(err)
+		}
 
-			r.Logger.Debug("gossiping evidence to peer", "ev", ev, "peer", peerID)
+		// Before attempting to gossip the evidence, ensure we haven't stopped the
+		// reactor or received a signal marking the peer as removed.
+		select {
+		case <-done:
+			// We can safely exit the goroutine once the peer is marked as removed
+			// by processPeerUpdates closing the done channel.
+			return
+
+		case <-r.Quit():
+			// we can safely exit the goroutine once the reactor stops
+			return
+
+		default:
+			r.Logger.Debug("gossiping evidence to peer", "evidence", ev, "peer", peerID)
 			r.evidenceCh.Out <- p2p.Envelope{
 				To: peerID,
 				Message: &tmproto.EvidenceList{
@@ -215,14 +265,18 @@ func (r *Reactor) broadcastEvidenceRoutine(peerID p2p.PeerID) {
 			}
 		}
 
-		afterCh := time.After(time.Second * broadcastEvidenceIntervalS)
 		select {
-		case <-afterCh:
-			// start from the beginning every tick
+		case <-time.After(time.Second * broadcastEvidenceIntervalS):
+			// start from the beginning every broadcastEvidenceIntervalS seconds
 			next = nil
 
 		case <-next.NextWaitChan():
 			next = next.Next()
+
+		case <-done:
+			// We can safely exit the goroutine once the peer is marked as removed
+			// by processPeerUpdates closing the done channel.
+			return
 
 		case <-r.Quit():
 			// we can safely exit the goroutine once the reactor stops
@@ -230,135 +284,3 @@ func (r *Reactor) broadcastEvidenceRoutine(peerID p2p.PeerID) {
 		}
 	}
 }
-
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-
-// // prepareEvidenceMessage returns a slice of Evidence objects to send to the peer,
-// // or nil if the evidence is invalid for the peer. If message is nil, we should
-// // sleep and try again.
-// func (r Reactor) prepareEvidenceMessage(peerID p2p.PeerID, ev types.Evidence) []types.Evidence {
-// 	// make sure the peer is up to date
-// 	evHeight := ev.Height()
-// 	peerState, ok := peer.Get(types.PeerStateKey).(PeerState)
-// 	if !ok {
-// 		// Peer does not have a state yet. We set it in the consensus reactor, but
-// 		// when we add peer in Switch, the order we call reactors#AddPeer is
-// 		// different every time due to us using a map. Sometimes other reactors
-// 		// will be initialized before the consensus reactor. We should wait a few
-// 		// milliseconds and retry.
-// 		return nil
-// 	}
-
-// 	// NOTE: We only send evidence to peers where
-// 	// peerHeight - maxAge < evidenceHeight < peerHeight
-// 	var (
-// 		peerHeight   = peerState.GetHeight()
-// 		params       = r.evpool.State().ConsensusParams.Evidence
-// 		ageNumBlocks = peerHeight - evHeight
-// 	)
-
-// 	if peerHeight <= evHeight { // peer is behind. sleep while he catches up
-// 		return nil
-// 	} else if ageNumBlocks > params.MaxAgeNumBlocks { // evidence is too old relative to the peer, skip
-// 		// NOTE: if evidence is too old for an honest peer, then we're behind and
-// 		// either it already got committed or it never will!
-// 		r.Logger.Info(
-// 			"not sending peer old evidence",
-// 			"peerHeight", peerHeight,
-// 			"evHeight", evHeight,
-// 			"maxAgeNumBlocks", params.MaxAgeNumBlocks,
-// 			"lastBlockTime", r.evpool.State().LastBlockTime,
-// 			"maxAgeDuration", params.MaxAgeDuration,
-// 			"peer", peer,
-// 		)
-
-// 		return nil
-// 	}
-
-// 	return []types.Evidence{ev}
-// }
-
-// Receive implements Reactor.
-// It adds any received evidence to the evpool.
-// XXX: do not call any methods that can block or incur heavy processing.
-// https://github.com/tendermint/tendermint/issues/2888
-// func (evR *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
-// 	evis, err := decodeMsg(msgBytes)
-// 	if err != nil {
-// 		evR.Logger.Error("Error decoding message", "src", src, "chId", chID, "err", err, "bytes", msgBytes)
-// 		evR.Switch.StopPeerForError(src, err)
-// 		return
-// 	}
-
-// 	for _, ev := range evis {
-// 		err := evR.evpool.AddEvidence(ev)
-// 		switch err.(type) {
-// 		case *types.ErrInvalidEvidence:
-// 			evR.Logger.Error(err.Error())
-// 			// punish peer
-// 			evR.Switch.StopPeerForError(src, err)
-// 			return
-// 		case nil:
-// 		default:
-// 			// continue to the next piece of evidence
-// 			evR.Logger.Error("Evidence has not been added", "evidence", evis, "err", err)
-// 		}
-// 	}
-// }
-
-// // AddPeer implements Reactor.
-// func (evR *Reactor) AddPeer(peer p2p.Peer) {
-// 	go evR.broadcastEvidenceRoutine(peer)
-// }
-
-// // PeerState describes the state of a peer.
-// type PeerState interface {
-// 	GetHeight() int64
-// }
-
-// // encodemsg takes a array of evidence
-// // returns the byte encoding of the List Message
-// func encodeMsg(evis []types.Evidence) ([]byte, error) {
-// 	evi := make([]tmproto.Evidence, len(evis))
-// 	for i := 0; i < len(evis); i++ {
-// 		ev, err := types.EvidenceToProto(evis[i])
-// 		if err != nil {
-// 			return nil, err
-// 		}
-// 		evi[i] = *ev
-// 	}
-// 	epl := tmproto.EvidenceList{
-// 		Evidence: evi,
-// 	}
-
-// 	return epl.Marshal()
-// }
-
-// // decodemsg takes an array of bytes
-// // returns an array of evidence
-// func decodeMsg(bz []byte) (evis []types.Evidence, err error) {
-// 	lm := tmproto.EvidenceList{}
-// 	if err := lm.Unmarshal(bz); err != nil {
-// 		return nil, err
-// 	}
-
-// 	evis = make([]types.Evidence, len(lm.Evidence))
-// 	for i := 0; i < len(lm.Evidence); i++ {
-// 		ev, err := types.EvidenceFromProto(&lm.Evidence[i])
-// 		if err != nil {
-// 			return nil, err
-// 		}
-// 		evis[i] = ev
-// 	}
-
-// 	for i, ev := range evis {
-// 		if err := ev.ValidateBasic(); err != nil {
-// 			return nil, fmt.Errorf("invalid evidence (#%d): %v", i, err)
-// 		}
-// 	}
-
-// 	return evis, nil
-// }
