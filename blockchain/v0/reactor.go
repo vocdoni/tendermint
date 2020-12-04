@@ -204,10 +204,12 @@ func (bcR *BlockchainReactor) respondToPeer(msg *bcproto.BlockRequest,
 }
 
 // Receive implements Reactor by handling 4 types of messages (look below).
+// XXX: do not call any methods that can block or incur heavy processing.
+// https://github.com/tendermint/tendermint/issues/2888
 func (bcR *BlockchainReactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 	msg, err := bc.DecodeMsg(msgBytes)
 	if err != nil {
-		bcR.Logger.Error("Error decoding message", "src", src, "chId", chID, "msg", msg, "err", err, "bytes", msgBytes)
+		bcR.Logger.Error("Error decoding message", "src", src, "chId", chID, "err", err)
 		bcR.Switch.StopPeerForError(src, err)
 		return
 	}

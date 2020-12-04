@@ -1,6 +1,7 @@
 package statesync
 
 import (
+	"context"
 	"errors"
 	"sort"
 	"time"
@@ -90,6 +91,8 @@ func (r *Reactor) RemovePeer(peer p2p.Peer, reason interface{}) {
 }
 
 // Receive implements p2p.Reactor.
+// XXX: do not call any methods that can block or incur heavy processing.
+// https://github.com/tendermint/tendermint/issues/2888
 func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 	if !r.IsRunning() {
 		return
@@ -97,7 +100,7 @@ func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 
 	msg, err := decodeMsg(msgBytes)
 	if err != nil {
-		r.Logger.Error("Error decoding message", "src", src, "chId", chID, "msg", msg, "err", err, "bytes", msgBytes)
+		r.Logger.Error("Error decoding message", "src", src, "chId", chID, "err", err)
 		r.Switch.StopPeerForError(src, err)
 		return
 	}
@@ -159,7 +162,7 @@ func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 		case *ssproto.ChunkRequest:
 			r.Logger.Debug("Received chunk request", "height", msg.Height, "format", msg.Format,
 				"chunk", msg.Index, "peer", src.ID())
-			resp, err := r.conn.LoadSnapshotChunkSync(abci.RequestLoadSnapshotChunk{
+			resp, err := r.conn.LoadSnapshotChunkSync(context.Background(), abci.RequestLoadSnapshotChunk{
 				Height: msg.Height,
 				Format: msg.Format,
 				Chunk:  msg.Index,
@@ -212,7 +215,7 @@ func (r *Reactor) Receive(chID byte, src p2p.Peer, msgBytes []byte) {
 
 // recentSnapshots fetches the n most recent snapshots from the app
 func (r *Reactor) recentSnapshots(n uint32) ([]*snapshot, error) {
-	resp, err := r.conn.ListSnapshotsSync(abci.RequestListSnapshots{})
+	resp, err := r.conn.ListSnapshotsSync(context.Background(), abci.RequestListSnapshots{})
 	if err != nil {
 		return nil, err
 	}
